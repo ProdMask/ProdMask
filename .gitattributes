@@ -1,0 +1,3 @@
+# Keep LF line endings on every platform; gofmt and the SQL fixtures expect them.
+* text=auto eol=lf
+*.exe binary

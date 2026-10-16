@@ -1,0 +1,35 @@
+name: release
+
+# Pushing a tag such as v0.1.0 tests the code, builds prodmask for Linux,
+# macOS and Windows (amd64 and arm64), and publishes the archives with a
+# checksums.txt to GitHub Releases.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Release with the newest Go 1.27 patch release, for its security fixes;
+      # go.mod only states the minimum version.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -count=1 ./...
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: ["mariadb:11.8", "mysql:8.4"]
+    services:
+      db:
+        image: ${{ matrix.db }}
+        env:
+          MARIADB_ROOT_PASSWORD: ci-only-root
+          MYSQL_ROOT_PASSWORD: ci-only-root
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -pci-only-root || mysqladmin ping -h 127.0.0.1 -pci-only-root"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -count=1 ./...
+        env:
+          PRODMASK_TEST_DSN: root:ci-only-root@tcp(127.0.0.1:3306)/
+
+  # Builds every release target without publishing, so a broken release
+  # config or a platform-specific build error shows up before tagging.
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean

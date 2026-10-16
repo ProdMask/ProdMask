@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Builds prodmask for Linux, macOS and Windows and publishes the archives with
+# a checksums file to GitHub Releases. Run by .github/workflows/release.yml
+# when a v* tag is pushed; try it locally with:
+#   goreleaser release --snapshot --clean
+version: 2
+
+project_name: prodmask
+
+builds:
+  - id: prodmask
+    main: ./cmd/prodmask
+    binary: prodmask
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    # Use the commit time so rebuilding a tag gives identical binaries.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: prodmask
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+
+release:
+  # v1.2.3-rc.1 and similar tags become pre-releases.
+  prerelease: auto

@@ -1,0 +1,19 @@
+# Local toolchain and test database (portable MariaDB, data dir, env file)
+/.tools/
+
+# Build and test output
+/dist/
+/prodmask
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local secrets and scan output
+.env
+.env.*
+/prodmask.yml
+
+# Editors
+.idea/
+.vscode/

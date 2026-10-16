@@ -1,0 +1,11 @@
+prodmask
+Copyright 2026 Sotiris Drakatos
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes third-party software under these licenses:
+
+- github.com/go-sql-driver/mysql, Mozilla Public License 2.0
+  Source: https://github.com/go-sql-driver/mysql
+- filippo.io/edwards25519, BSD 3-Clause License
+  Source: https://github.com/FiloSottile/edwards25519
