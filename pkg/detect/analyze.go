@@ -2,6 +2,7 @@ package detect
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -13,6 +14,7 @@ type Hint struct {
 	Category model.Category
 	Severity model.Severity // zero means the category default
 	Mask     string
+	Rows     []model.RowMask // other masks for some rows of the column
 	Note     string
 	Source   string // e.g. "preset:woocommerce"
 	Ignore   bool   // known not to hold personal data
@@ -157,6 +159,9 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		f.Mask = maskFor(nm.Category, tokens)
 		if hint != nil && hint.Mask != "" {
 			f.Mask = hint.Mask
+		}
+		if hint != nil {
+			f.RowMasks = slices.Clone(hint.Rows)
 		}
 		f.Source = source
 		f.Note = nm.Note

@@ -5,9 +5,11 @@ package config
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -31,6 +33,13 @@ type rule struct {
 type field struct {
 	rule  *rule
 	paths map[string]*rule
+	rows  []rowRule
+}
+
+// rowRule replaces a field's mask for the rows that match where.
+type rowRule struct {
+	where string
+	rule  *rule
 }
 
 type tableConf struct {
@@ -73,12 +82,18 @@ func Write(w io.Writer, res *model.Result) error {
 	// confident ones.
 	best := map[string]model.Finding{}
 	others := map[string][]string{}
+	rowMasks := map[string][]model.RowMask{}
 	var keys []string
 	for _, f := range res.Findings {
 		if f.MetaKey == "(key hidden)" {
 			continue
 		}
 		k := f.Table + "\x00" + f.Column + "\x00" + f.MetaKey + "\x00" + f.Path
+		for _, rm := range f.RowMasks {
+			if !slices.Contains(rowMasks[k], rm) {
+				rowMasks[k] = append(rowMasks[k], rm)
+			}
+		}
 		old, ok := best[k]
 		switch {
 		case !ok:
@@ -120,8 +135,15 @@ func Write(w io.Writer, res *model.Result) error {
 		}
 		if f.Path != "" {
 			fd.paths[f.Path] = r
-		} else {
-			fd.rule = r
+			continue
+		}
+		fd.rule = r
+		rms := rowMasks[k]
+		slices.SortFunc(rms, func(a, b model.RowMask) int {
+			return cmp.Or(strings.Compare(a.Where, b.Where), strings.Compare(a.Mask, b.Mask), strings.Compare(a.Note, b.Note))
+		})
+		for _, rm := range rms {
+			fd.rows = append(fd.rows, rowRule{where: rm.Where, rule: &rule{mask: rm.Mask, comment: rm.Note, low: r.low}})
 		}
 	}
 	for _, ts := range res.Tables {
@@ -230,22 +252,44 @@ func writeFields(b *bufio.Writer, indent string, fields map[string]*field) {
 	sort.Strings(names)
 	for _, n := range names {
 		fd := fields[n]
-		if len(fd.paths) == 0 {
+		if len(fd.paths) == 0 && len(fd.rows) == 0 {
 			writeRule(b, indent, n, fd.rule)
 			continue
 		}
-		fmt.Fprintf(b, "%s%s:\n", indent, scalar(n))
+		weakRows := !slices.ContainsFunc(fd.rows, func(rr rowRule) bool { return !rr.rule.low })
+		name := indent
+		if len(fd.paths) == 0 && (fd.rule == nil || fd.rule.low) && weakRows {
+			name += "# " // nothing confident inside, so no live key either
+		}
+		fmt.Fprintf(b, "%s%s:\n", name, scalar(n))
 		if fd.rule != nil {
 			writeRule(b, indent+"  ", "mask", fd.rule)
 		}
-		fmt.Fprintf(b, "%s  paths:\n", indent)
-		paths := make([]string, 0, len(fd.paths))
-		for p := range fd.paths {
-			paths = append(paths, p)
+		if len(fd.paths) > 0 {
+			fmt.Fprintf(b, "%s  paths:\n", indent)
+			paths := make([]string, 0, len(fd.paths))
+			for p := range fd.paths {
+				paths = append(paths, p)
+			}
+			sort.Strings(paths)
+			for _, p := range paths {
+				writeRule(b, indent+"    ", p, fd.paths[p])
+			}
 		}
-		sort.Strings(paths)
-		for _, p := range paths {
-			writeRule(b, indent+"    ", p, fd.paths[p])
+		if len(fd.rows) > 0 {
+			header := indent + "  "
+			if weakRows {
+				header += "# " // all weak: don't leave an empty rows: key behind
+			}
+			fmt.Fprintf(b, "%srows:  # for the rows that match, these replace the mask above\n", header)
+			for _, rr := range fd.rows {
+				prefix := indent + "    "
+				if rr.rule.low {
+					prefix += "# "
+				}
+				fmt.Fprintf(b, "%s- where: %s\n", prefix, scalar(rr.where))
+				fmt.Fprintf(b, "%s  mask: %s%s\n", prefix, scalar(rr.rule.mask), comment(rr.rule.comment))
+			}
 		}
 	}
 }

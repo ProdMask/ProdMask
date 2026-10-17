@@ -156,8 +156,18 @@ type Finding struct {
 	Matched    int        `json:"matched"`
 	Reasons    []string   `json:"reasons"`
 	Mask       string     `json:"suggested_mask"`
+	RowMasks   []RowMask  `json:"suggested_row_masks,omitempty"`
 	Source     string     `json:"source"`
 	Note       string     `json:"note,omitempty"`
+}
+
+// RowMask suggests a different mask for some rows of a column, such as the
+// orders among WordPress posts. For the rows that match Where, it replaces
+// the finding's own suggestion.
+type RowMask struct {
+	Where string `json:"where"` // e.g. post_type IN ('shop_order', 'shop_order_refund')
+	Mask  string `json:"mask"`
+	Note  string `json:"note,omitempty"`
 }
 
 // Location renders where a finding is, e.g. wp_usermeta.meta_value[billing_phone].

@@ -15,6 +15,21 @@ const (
 	wc = "woocommerce"
 )
 
+// wooOrderTypes are the post types of orders stored as posts: orders,
+// refunds, HPOS placeholders and WooCommerce Subscriptions subscriptions.
+var wooOrderTypes = []string{"shop_order", "shop_order_refund", "shop_order_placehold", "shop_subscription"}
+
+// postPasswordHint describes wp_posts.post_password: posts and pages keep
+// their passwords, but orders stored as posts (by the legacy store, or in
+// HPOS compatibility mode) keep their order key there. The rows rule comes
+// with every WordPress site, because it matches nothing where there are no
+// orders, and a site scanned without the WooCommerce preset may have them.
+func postPasswordHint(sev model.Severity, platform, note string) *detect.Hint {
+	return &detect.Hint{Category: model.CatSecret, Severity: sev, Mask: "keep", Source: "preset:" + platform, Note: note,
+		Rows: []model.RowMask{{Where: "post_type IN ('" + strings.Join(wooOrderTypes, "', '") + "')", Mask: "null",
+			Note: "WooCommerce order keys; anyone with one in a link can view the order"}}}
+}
+
 // wordpressPrefixes finds the table prefix of every WordPress site in the
 // database: wp_ for a single site, wp_ plus wp_2_, wp_3_ ... for multisite.
 func wordpressPrefixes(s *model.Schema) []string {
@@ -112,8 +127,7 @@ func (e *env) wordpressSite(p, b string) {
 	posts, postmeta, comments, commentmeta := p+"posts", p+"postmeta", p+"comments", p+"commentmeta"
 	options := p + "options"
 
-	e.column(posts, "post_password", &detect.Hint{Category: model.CatSecret, Severity: model.SeverityLow,
-		Mask: "keep", Source: "preset:" + wp, Note: "WordPress stores post passwords in plain text"})
+	e.column(posts, "post_password", postPasswordHint(model.SeverityLow, wp, "WordPress stores post passwords in plain text"))
 	e.column(comments, "comment_agent", hint(wp, model.CatUserAgent, ""))
 
 	e.meta(postmeta, &MetaTable{
@@ -215,6 +229,9 @@ func (e *env) woocommerce(p, b string, opts map[string]string) {
 
 	orderKey := &detect.Hint{Category: model.CatSecret, Severity: model.SeverityMedium, Source: "preset:" + wc,
 		Note: "anyone with this key in a link can view the order"}
+	// On a shop the column holds order keys, as sensitive as _order_key.
+	e.column(p+"posts", "post_password", postPasswordHint(model.SeverityMedium, wc,
+		"WordPress post passwords in plain text, and the key of each order stored as a post"))
 	e.column(p+"wc_order_addresses", "state", hint(wc, model.CatRegion, ""))
 	e.column(p+"wc_customer_lookup", "state", hint(wc, model.CatRegion, ""))
 	e.column(p+"wc_order_operational_data", "order_key", orderKey)

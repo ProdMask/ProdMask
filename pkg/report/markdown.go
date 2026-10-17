@@ -21,6 +21,16 @@ func code(s string) string {
 	return "`" + strings.ReplaceAll(s, "`", "'") + "`"
 }
 
+// suggestedMask renders a finding's mask with the masks for particular
+// rows, e.g. `keep`; `null` where `post_type IN ('shop_order')`.
+func suggestedMask(f model.Finding) string {
+	s := code(f.Mask)
+	for _, rm := range f.RowMasks {
+		s += "; " + code(rm.Mask) + " where " + code(rm.Where)
+	}
+	return s
+}
+
 func title(sev model.Severity) string {
 	s := sev.String()
 	return strings.ToUpper(s[:1]) + s[1:]
@@ -83,7 +93,7 @@ func Markdown(w io.Writer, res *model.Result) error {
 		for _, table := range order {
 			for _, f := range by[table] {
 				pf("| %s | %s | %s | %s | %s | %s |\n", title(f.Severity), code(f.Table+"."+fieldName(f)),
-					cell(f.Category.Label()), f.Confidence, cell(evidence(f)), code(f.Mask))
+					cell(f.Category.Label()), f.Confidence, cell(evidence(f)), cell(suggestedMask(f)))
 			}
 		}
 		pf("\n")

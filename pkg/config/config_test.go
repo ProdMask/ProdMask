@@ -79,3 +79,51 @@ func TestWrite(t *testing.T) {
 		t.Error("declared foreign keys belong to the schema, not the config")
 	}
 }
+
+func TestWriteRowMasks(t *testing.T) {
+	orders := model.RowMask{Where: "post_type IN ('shop_order', 'shop_order_refund')", Mask: "null", Note: "order keys"}
+	res := &model.Result{
+		Version: "test", Database: "shop", GeneratedAt: time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC),
+		Findings: []model.Finding{
+			{Table: "wp_posts", Column: "post_password", Category: model.CatSecret, Severity: model.SeverityMedium,
+				Confidence: model.ConfidenceHigh, Mask: "keep", RowMasks: []model.RowMask{orders}, Note: "post passwords"},
+			// A more severe finding decides the column's mask; the row masks stay.
+			{Table: "wp_posts", Column: "post_password", Category: model.CatEmail, Severity: model.SeverityHigh,
+				Confidence: model.ConfidenceHigh, Mask: "fake_email", RowMasks: []model.RowMask{orders}},
+			{Table: "wp_posts", Column: "post_excerpt", Category: model.CatFreeText, Severity: model.SeverityMedium,
+				Confidence: model.ConfidenceLow, Mask: "redact", RowMasks: []model.RowMask{{Where: "post_type = 'shop_order'", Mask: "empty"}}},
+			{Table: "wp_posts", Column: "post_title", Category: model.CatPersonName, Severity: model.SeverityMedium,
+				Confidence: model.ConfidenceHigh, Mask: "fake_name", RowMasks: []model.RowMask{
+					{Where: "post_type = 'b'", Mask: "null"}, {Where: "post_type = 'a'", Mask: "redact"}, {Where: "post_type = 'a'", Mask: "empty"}}},
+		},
+	}
+	var b bytes.Buffer
+	if err := Write(&b, res); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{
+		"      post_password:\n" +
+			"        mask: fake_email  # email address, high confidence; also secret, key or token\n" +
+			"        rows:  # for the rows that match, these replace the mask above\n" +
+			"          - where: \"post_type IN ('shop_order', 'shop_order_refund')\"\n" +
+			"            mask: \"null\"  # order keys\n",
+		// Weak matches stay commented out, with their row masks.
+		"      # post_excerpt:\n" +
+			"        # mask: redact  # free text with personal data, low confidence\n" +
+			"        # rows:  # for the rows that match, these replace the mask above\n" +
+			"          # - where: \"post_type = 'shop_order'\"\n" +
+			"          #   mask: empty\n",
+		// In a fixed order.
+		"          - where: \"post_type = 'a'\"\n            mask: empty\n" +
+			"          - where: \"post_type = 'a'\"\n            mask: redact\n" +
+			"          - where: \"post_type = 'b'\"\n            mask: \"null\"\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("config is missing %q:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "- where:"); n != 5 {
+		t.Errorf("want each row mask once, got %d:\n%s", n, out)
+	}
+}

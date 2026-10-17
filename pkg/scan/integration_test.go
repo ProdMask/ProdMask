@@ -31,7 +31,10 @@ import (
 
 const canary = "zq7canary4x"
 
-func TestFixtures(t *testing.T) {
+// testServer connects to the server in PRODMASK_TEST_DSN as a user that can
+// create databases, or skips the test.
+func testServer(t *testing.T) (*sql.DB, *mysql.Config) {
+	t.Helper()
 	dsn := os.Getenv("PRODMASK_TEST_DSN")
 	if dsn == "" {
 		t.Skip("PRODMASK_TEST_DSN is not set")
@@ -47,7 +50,38 @@ func TestFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := sql.OpenDB(connector)
-	defer admin.Close()
+	t.Cleanup(func() { admin.Close() })
+	return admin, adminCfg
+}
+
+// openScan opens a read-only scan session on one database.
+func openScan(ctx context.Context, t *testing.T, adminCfg *mysql.Config, database string) *dbconn.Session {
+	t.Helper()
+	cfg := adminCfg.Clone()
+	cfg.MultiStatements = false
+	cfg.DBName = database
+	sess, err := dbconn.Open(ctx, cfg, 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sess.Close() })
+	return sess
+}
+
+func runScan(ctx context.Context, t *testing.T, sess *dbconn.Session, preset string) *model.Result {
+	t.Helper()
+	res, err := scan.Run(ctx, sess, scan.Options{
+		SampleRows: scan.DefaultSampleRows, MetaSampleRows: scan.DefaultMetaSampleRows,
+		Samples: true, Preset: preset, Version: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+func TestFixtures(t *testing.T) {
+	admin, adminCfg := testServer(t)
 
 	checks := map[string]func(*testing.T, *model.Result){
 		"wordpress": checkWordPress,
@@ -59,6 +93,9 @@ func TestFixtures(t *testing.T) {
 		"magento2":  "UPDATE customer_entity SET firstname = 'x' WHERE entity_id = 1",
 		"laravel":   "DELETE FROM migrations WHERE id = 1",
 	}
+	moreChecks := map[string]func(context.Context, *testing.T, *dbconn.Session){
+		"wordpress": checkWordPressMore,
+	}
 	for _, platform := range fixture.Platforms {
 		t.Run(platform, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -67,26 +104,16 @@ func TestFixtures(t *testing.T) {
 			if err := fixture.Build(ctx, admin, platform, database, fixture.Options{Canary: canary}); err != nil {
 				t.Fatalf("build fixture: %v", err)
 			}
-			cfg := adminCfg.Clone()
-			cfg.MultiStatements = false
-			cfg.DBName = database
-			sess, err := dbconn.Open(ctx, cfg, 10*time.Second)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer sess.Close()
+			sess := openScan(ctx, t, adminCfg, database)
 
 			if _, err := sess.DB.ExecContext(ctx, writes[platform]); err == nil {
 				t.Fatal("the scan session accepted a write")
 			}
-
-			res, err := scan.Run(ctx, sess, scan.Options{
-				SampleRows: scan.DefaultSampleRows, MetaSampleRows: scan.DefaultMetaSampleRows,
-				Samples: true, Preset: "auto", Version: "test",
-			})
-			if err != nil {
-				t.Fatal(err)
+			if check := moreChecks[platform]; check != nil {
+				check(ctx, t, sess)
 			}
+
+			res := runScan(ctx, t, sess, "auto")
 
 			outputs := render(t, res)
 			for name, out := range outputs {
@@ -236,6 +263,114 @@ func checkWordPress(t *testing.T, res *model.Result) {
 	expectRel(t, res, "wp_woocommerce_order_items", "order_id", "wp_wc_orders", model.RelConfirmed)
 	expectRel(t, res, "wp_wc_order_addresses", "order_id", "wp_wc_orders", model.RelConfirmed)
 	expectAction(t, res, "wp_woocommerce_sessions")
+	expectOrderKeysNulled(t, res, "wp_posts", model.SeverityMedium)
+}
+
+// checkWordPressMore checks that the fixture stores legacy orders the way
+// WooCommerce does, with each order's key in post_password, and that a scan
+// with the WordPress preset alone doesn't suggest keeping those keys either.
+func checkWordPressMore(ctx context.Context, t *testing.T, sess *dbconn.Session) {
+	var orders, keyed int
+	err := sess.DB.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(p.post_password = m.meta_value), 0)
+		FROM wp_posts p JOIN wp_postmeta m ON m.post_id = p.ID AND m.meta_key = '_order_key'
+		WHERE p.post_type = 'shop_order'`).Scan(&orders, &keyed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orders == 0 || keyed != orders {
+		t.Errorf("%d of %d legacy orders keep their order key in post_password", keyed, orders)
+	}
+	expectOrderKeysNulled(t, runScan(ctx, t, sess, "wordpress"), "wp_posts", model.SeverityLow)
+}
+
+// A multisite network where only the second site runs WooCommerce. Each
+// site's posts table nulls its order rows, and only the shop's is rated as
+// holding order keys.
+func TestWordPressMultisite(t *testing.T) {
+	admin, adminCfg := testServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	const db = "prodmask_fixture_multisite"
+	stmts := []string{
+		"DROP DATABASE IF EXISTS " + db,
+		"CREATE DATABASE " + db + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+		"CREATE TABLE " + db + ".wp_users (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, user_login varchar(60) NOT NULL DEFAULT '')",
+	}
+	for _, p := range []string{"wp_", "wp_2_"} {
+		stmts = append(stmts,
+			"CREATE TABLE "+db+"."+p+"options (option_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, "+
+				"option_name varchar(191) NOT NULL DEFAULT '', option_value longtext NOT NULL, UNIQUE KEY option_name (option_name))",
+			"CREATE TABLE "+db+"."+p+"posts (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, "+
+				"post_type varchar(20) NOT NULL DEFAULT 'post', post_password varchar(255) NOT NULL DEFAULT '')",
+			"CREATE TABLE "+db+"."+p+"postmeta (meta_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, "+
+				"post_id bigint unsigned NOT NULL DEFAULT 0, meta_key varchar(255) DEFAULT NULL, meta_value longtext)",
+			"INSERT INTO "+db+"."+p+"options (option_name, option_value) VALUES ('db_version', '60421')",
+			"INSERT INTO "+db+"."+p+"posts (post_type, post_password) VALUES ('page', 'members only')",
+		)
+	}
+	stmts = append(stmts,
+		"INSERT INTO "+db+".wp_2_options (option_name, option_value) VALUES ('woocommerce_version', '9.3.3')",
+		"INSERT INTO "+db+".wp_2_posts (post_type, post_password) VALUES ('shop_order', 'wc_order_"+strings.Repeat("x", 13)+"')",
+	)
+	for _, s := range stmts {
+		if _, err := admin.ExecContext(ctx, s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+	res := runScan(ctx, t, openScan(ctx, t, adminCfg, db), "auto")
+	expectPlatforms(t, res, "wordpress", "woocommerce")
+	expectOrderKeysNulled(t, res, "wp_posts", model.SeverityLow)
+	expectOrderKeysNulled(t, res, "wp_2_posts", model.SeverityMedium)
+}
+
+const orderRows = "post_type IN ('shop_order', 'shop_order_refund', 'shop_order_placehold', 'shop_subscription')"
+
+// expectOrderKeysNulled checks that the scan suggests keeping a site's post
+// passwords, but not the order keys WooCommerce stores in the same column.
+func expectOrderKeysNulled(t *testing.T, res *model.Result, table string, sev model.Severity) {
+	t.Helper()
+	var f *model.Finding
+	for i := range res.Findings {
+		if g := &res.Findings[i]; g.Table == table && g.Column == "post_password" && g.Category == model.CatSecret {
+			f = g
+		}
+	}
+	if f == nil {
+		t.Errorf("no secret finding for %s.post_password", table)
+		return
+	}
+	rows := model.RowMask{Where: orderRows, Mask: "null", Note: "WooCommerce order keys; anyone with one in a link can view the order"}
+	if f.Mask != "keep" || f.Severity != sev || len(f.RowMasks) != 1 || f.RowMasks[0] != rows {
+		t.Errorf("%s.post_password: got mask %q, severity %s, row masks %+v; want keep, %s, null for order rows",
+			table, f.Mask, f.Severity, f.RowMasks, sev)
+	}
+	var yml bytes.Buffer
+	if err := config.Write(&yml, res); err != nil {
+		t.Fatal(err)
+	}
+	section := configTable(yml.String(), table)
+	want := "      post_password:\n        mask: keep  # secret, key or token, high confidence;"
+	wantRows := "          - where: \"" + orderRows + "\"\n            mask: \"null\"  # WooCommerce order keys;"
+	if !strings.Contains(section, want) || !strings.Contains(section, wantRows) {
+		t.Errorf("the starter config does not null order keys in %s.post_password:\n%s", table, section)
+	}
+}
+
+// configTable returns one table's section of a starter config.
+func configTable(yml, table string) string {
+	start := strings.Index(yml, "\n  "+table+":\n")
+	if start < 0 {
+		return ""
+	}
+	lines := strings.SplitAfter(yml[start+1:], "\n")
+	section := lines[0]
+	for _, l := range lines[1:] {
+		if !strings.HasPrefix(l, "    ") {
+			break
+		}
+		section += l
+	}
+	return section
 }
 
 func checkMagento(t *testing.T, res *model.Result) {

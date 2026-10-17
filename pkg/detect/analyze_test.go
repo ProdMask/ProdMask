@@ -3,6 +3,7 @@ package detect
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -170,6 +171,25 @@ func TestAnalyzeHint(t *testing.T) {
 	sub.Hint = &Hint{Ignore: true}
 	if fs := Analyze(sub, profileOf(ua)); len(fs) != 0 {
 		t.Fatalf("ignored subject produced %+v", fs)
+	}
+}
+
+func TestAnalyzeHintRowMasks(t *testing.T) {
+	rows := []model.RowMask{{Where: "post_type IN ('shop_order')", Mask: "null", Note: "order keys"}}
+	sub := subject("wp_posts", "post_password", "varchar")
+	sub.Hint = &Hint{Category: model.CatSecret, Mask: "keep", Rows: rows, Source: "preset:woocommerce"}
+	fs := Analyze(sub, profileOf("a@mail.fixture.gr", "b@mail.fixture.gr", "c@mail.fixture.gr"))
+	f := find(fs, model.CatSecret, "")
+	if f == nil || f.Mask != "keep" || !reflect.DeepEqual(f.RowMasks, rows) {
+		t.Fatalf("got %+v", fs)
+	}
+	// The masks belong to what the preset knows, not to what the values look like.
+	if e := find(fs, model.CatEmail, ""); e == nil || e.RowMasks != nil {
+		t.Fatalf("value finding: got %+v", fs)
+	}
+	f.RowMasks[0].Mask = "keep"
+	if rows[0].Mask != "null" {
+		t.Fatal("the finding shares its row masks with the preset hint")
 	}
 }
 

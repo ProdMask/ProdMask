@@ -102,7 +102,7 @@ The report warns when the user it runs as could change the database.
 
 `--config-out prodmask.yml` turns the findings into a starting point for masking:
 
-- a strategy per column, meta key or JSON path (`fake_email`, `fake_phone`, `hash`, `null`, …);
+- a strategy per column, meta key or JSON path (`fake_email`, `fake_phone`, `hash`, `null`, …), with a different one for some rows where a platform needs it, such as the WooCommerce orders among WordPress posts;
 - tables to empty;
 - the inferred relationships;
 - the settings to neutralise.
@@ -118,10 +118,10 @@ go test ./...
 The integration tests build fake WordPress/WooCommerce, Magento 2 and Laravel databases and scan them. They run when `PRODMASK_TEST_DSN` points at a server where the user can create databases:
 
 ```bash
-PRODMASK_TEST_DSN='root:…@tcp(127.0.0.1:3306)/' go test ./pkg/scan
+PRODMASK_TEST_DSN='root:…@tcp(127.0.0.1:3306)/' go test ./...
 ```
 
-The scanner engine lives in importable packages under `github.com/ProdMask/ProdMask/pkg/...`; `cmd/prodmask` is a thin CLI on top.
+The scanner engine lives in importable packages under `github.com/ProdMask/ProdMask/pkg/...`. The command line is `pkg/cli`, which other builds can add commands to; `cmd/prodmask` is a thin main on top.
 
 All fixture data is invented:
 
