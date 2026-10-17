@@ -33,7 +33,13 @@ grep prodmask_0.1.0_linux_amd64.tar.gz checksums.txt | sha256sum -c
 
 On Windows, compare the output of `Get-FileHash` with the line in `checksums.txt`.
 
-To build it yourself instead, use Go 1.27 or later. The only dependency is `github.com/go-sql-driver/mysql`.
+To build it yourself instead, use Go 1.27 or later. The only dependency is `github.com/go-sql-driver/mysql`. Install it straight from the module:
+
+```bash
+go install github.com/ProdMask/ProdMask/cmd/prodmask@latest
+```
+
+Or build it from a checkout:
 
 ```bash
 go build -o prodmask ./cmd/prodmask
@@ -144,6 +150,16 @@ The release workflow then:
 Tags with a suffix, such as `v0.2.0-rc.1`, are published as pre-releases.
 
 To try the release build without publishing, run `goreleaser release --snapshot --clean`. The archives land in `dist/`. CI runs the same snapshot build on every push to `main` and on every pull request.
+
+## prodmask Pro
+
+The scanner is free and stays open source. prodmask Pro is a separate paid product, in development. It will:
+
+- make small copies with the real shape and fake customers;
+- switch off the settings that let staging email or charge anyone;
+- check the result.
+
+Text and Markdown reports end with one line about it. See [prodmask.com](https://prodmask.com).
 
 ## License
 

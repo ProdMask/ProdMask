@@ -206,5 +206,6 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 	} else {
 		pf("%s\n", st.dim("Add --config-out prodmask.yml to write a starter masking config from these findings."))
 	}
+	pf("%s\n", st.dim(proLine))
 	return b.Flush()
 }

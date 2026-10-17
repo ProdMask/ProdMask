@@ -47,3 +47,7 @@ changelog:
 release:
   # v1.2.3-rc.1 and similar tags become pre-releases.
   prerelease: auto
+  header: |
+    `prodmask scan` finds what a plain copy of a MySQL or MariaDB database would carry into staging: personal data, secrets, and settings that would email or charge real customers. It only reads, and its reports never contain the sampled values.
+
+    Download the archive for your system and check it against `checksums.txt`. The [README](https://github.com/ProdMask/ProdMask#install) shows how.

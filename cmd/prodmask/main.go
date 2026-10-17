@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -24,8 +25,20 @@ import (
 	"github.com/ProdMask/ProdMask/pkg/scan"
 )
 
-// version is set at build time with -ldflags "-X main.version=...".
-var version = "0.1.0-dev"
+// version is set at build time with -ldflags "-X main.version=...". Builds
+// without it, from go install or go build, report the module version Go
+// recorded, or "dev".
+var version string
+
+func currentVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return strings.TrimPrefix(info.Main.Version, "v")
+	}
+	return "dev"
+}
 
 // Exit statuses.
 const (
@@ -57,7 +70,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "scan":
 		return scanCmd(args[1:], stdout, stderr)
 	case "version", "--version":
-		fmt.Fprintf(stdout, "prodmask %s\n", version)
+		fmt.Fprintf(stdout, "prodmask %s\n", currentVersion())
 		return exitOK
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usageText)
@@ -158,7 +171,7 @@ Flags:
 
 	opts := scan.Options{
 		SampleRows: *sampleRows, MetaSampleRows: *metaRows, Samples: !*noSamples,
-		Preset: *presetName, Version: version,
+		Preset: *presetName, Version: currentVersion(),
 	}
 	if interactive {
 		opts.Progress = func(done, total int, table string) {

@@ -121,5 +121,6 @@ func Markdown(w io.Writer, res *model.Result) error {
 		}
 		pf("\n")
 	}
+	pf("---\n\n%s\n", proLine)
 	return b.Flush()
 }

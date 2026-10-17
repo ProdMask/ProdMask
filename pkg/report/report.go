@@ -17,6 +17,10 @@ import (
 // Headline is the question every report answers first.
 const Headline = "What a plain copy of this database would carry into staging"
 
+// proLine ends the text and Markdown reports: one line about the paid
+// product, with a plain link and no tracking.
+const proLine = "prodmask Pro, in development, will make copies of this database with the real shape and fake customers: https://prodmask.com"
+
 // JSON writes the full result as indented JSON.
 func JSON(w io.Writer, res *model.Result) error {
 	enc := json.NewEncoder(w)
