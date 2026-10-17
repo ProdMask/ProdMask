@@ -67,7 +67,8 @@ func Sampleable(c *model.Column) bool {
 	return true
 }
 
-func isText(c *model.Column) bool {
+// IsText reports whether a column holds text, which the server can cut.
+func IsText(c *model.Column) bool {
 	switch c.DataType {
 	case "char", "varchar", "tinytext", "text", "mediumtext", "longtext", "json":
 		return true
@@ -91,7 +92,7 @@ func QuoteIdent(s string) string { return "`" + strings.ReplaceAll(s, "`", "``")
 // characters on the server so huge values never cross the network.
 func ValueExpr(c *model.Column, n int) string {
 	q := QuoteIdent(c.Name)
-	if isText(c) && n > 0 {
+	if IsText(c) && n > 0 {
 		return fmt.Sprintf("LEFT(%s, %d)", q, n)
 	}
 	return q

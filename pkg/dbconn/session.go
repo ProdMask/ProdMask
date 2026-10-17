@@ -27,7 +27,11 @@ type Session struct {
 	Server   model.ServerInfo
 	Database string
 	Timeout  time.Duration
-	Warnings []string
+	// ServerTimeout reports whether the server enforces Timeout itself
+	// (max_statement_time or max_execution_time). Without it, a statement
+	// the client gives up on keeps running on the server.
+	ServerTimeout bool
+	Warnings      []string
 }
 
 // Flavor is "mariadb" or "mysql".
@@ -44,6 +48,10 @@ func Open(ctx context.Context, cfg *mysql.Config, timeout time.Duration) (*Sessi
 	cfg.MultiStatements = false
 	cfg.AllowAllFiles = false
 	cfg.ParseTime = false
+	// Bound arguments include key names that can hold personal data; with
+	// interpolation they would be written into the statement text, which
+	// server error messages may quote.
+	cfg.InterpolateParams = false
 	if cfg.ConnectionAttributes == "" {
 		cfg.ConnectionAttributes = "program_name:prodmask"
 	}
@@ -130,8 +138,10 @@ func (s *Session) probe(ctx context.Context, cfg *mysql.Config) (map[string]stri
 	switch {
 	case flavor == "mariadb" && hasVariable(ctx, conn, "max_statement_time"):
 		params["max_statement_time"] = strconv.FormatFloat(s.Timeout.Seconds(), 'f', -1, 64)
+		s.ServerTimeout = true
 	case flavor == "mysql" && hasVariable(ctx, conn, "max_execution_time"):
 		params["max_execution_time"] = strconv.FormatInt(s.Timeout.Milliseconds(), 10)
+		s.ServerTimeout = true
 	default:
 		s.warn("the server has no statement timeout setting; slow queries are only stopped by the client-side timeout")
 	}

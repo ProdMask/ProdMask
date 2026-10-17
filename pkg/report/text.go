@@ -61,14 +61,21 @@ func cut(s string, n int) string {
 }
 
 // shortField names a finding inside its table; for key/value tables the
-// key stands for the value column.
+// key stands for the value column, while a finding about the key names
+// themselves keeps its column.
 func shortField(f model.Finding) string {
 	s := f.Column
-	if f.MetaKey != "" {
+	switch {
+	case f.KeyName:
+		s += "[" + f.MetaKey + "]"
+	case f.MetaKey != "":
 		s = "[" + f.MetaKey + "]"
 	}
 	if f.Path != "" {
 		s += " → " + f.Path
+	}
+	if f.Where != "" {
+		s += " where " + f.Where
 	}
 	return s
 }
@@ -133,6 +140,9 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 			ts := summaries[table]
 			info := fmt.Sprintf("~%s rows", thousands(ts.RowsEstimate))
 			if ts.Kind == "key/value" {
+				if ts.Keys > 0 {
+					info = thousands(int64(ts.Keys)) + " keys · " + info
+				}
 				info = fmt.Sprintf("key/value: %s → %s · %s", ts.KeyColumn, ts.ValueColumn, info)
 			}
 			pf("  %s %s\n", st.bold(table), st.dim("· "+info))

@@ -1,6 +1,7 @@
 package fixture
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 )
@@ -14,6 +15,7 @@ func (f *filler) wordpress() {
 	people := make([]person, nUsers+1)
 
 	var users, usermeta [][]any
+	logins := make([]string, nUsers+1)
 	for id := 1; id <= nUsers; id++ {
 		p := g.person(id)
 		if id == 7 {
@@ -21,6 +23,12 @@ func (f *filler) wordpress() {
 		}
 		people[id] = p
 		login := fmt.Sprintf("%s.%s%d", strings.ToLower(p.first), strings.ToLower(p.last[:1]), id)
+		display := p.first + " " + p.last
+		if id >= 21 && id <= 30 {
+			// Sites that let people sign up with their email address.
+			login, display = p.email, p.email
+		}
+		logins[id] = login
 		pass := g.phpass()
 		if id%3 == 0 {
 			pass = g.wpBcrypt()
@@ -32,7 +40,7 @@ func (f *filler) wordpress() {
 		if g.chance(0.1) {
 			activation = fmt.Sprintf("%d:%s", 1700000000+g.intn(10000000), g.phpass())
 		}
-		users = append(users, []any{id, login, pass, login, p.email, url, ts(g.date(2019, 2025)), activation, 0, p.first + " " + p.last})
+		users = append(users, []any{id, login, pass, login, p.email, url, ts(g.date(2019, 2025)), activation, 0, display})
 
 		role := "customer"
 		if id == 1 {
@@ -75,6 +83,13 @@ func (f *filler) wordpress() {
 		um("_woocommerce_persistent_cart_1", php(kv{"cart", kv{g.hex(32), kv{"key", g.hex(32), "product_id", 41 + g.intn(40), "quantity", 1 + g.intn(3), "line_total", 19.9}}}))
 		if g.chance(0.3) {
 			um("community-events-location", php(kv{"description", p.city, "latitude", "37.9800", "longitude", "23.7200", "country", p.country, "ip", p.ip}))
+		}
+		if umEmailUser(id) {
+			// Ultimate Member puts the user's email address in a key name.
+			um(umEmailKey(p.email), p.email)
+		}
+		if id >= 2 && id <= 6 {
+			um("default_password_nag", "")
 		}
 	}
 	f.insert("wp_users", []string{"ID", "user_login", "user_pass", "user_nicename", "user_email", "user_url",
@@ -157,6 +172,45 @@ func (f *filler) wordpress() {
 			pm(id, m[0], m[1])
 		}
 	}
+	// bbPress replies, a coupon for named customers, two Contact Form 7
+	// forms (one in demo mode) and a privacy request.
+	for id := 300; id <= 303; id++ {
+		post(id, 2+id%5, "reply", "publish", "Re: delivery times", g.sentence(15), "", 0, "")
+	}
+	post(310, 1, "shop_coupon", "publish", "VIPONLY", "", "", 0, "")
+	post(320, 1, "wpcf7_contact_form", "publish", "Contact form", "[text* your-name] [email* your-email]", "", 0, "")
+	post(321, 1, "wpcf7_contact_form", "publish", "Test form", "[email* your-email]", "", 0, "")
+	d := ts(g.date(2025, 2025))
+	posts = append(posts, []any{330, 0, d, d, `{"type":"export_personal_data"}`, "requester@fixture-mail.gr", "",
+		"request-confirmed", "closed", "closed", g.phpass(), "export_personal_data", d, d, 0, "", 0, "user_request", "", 0})
+	special := map[int]func(){
+		290: func() { pm(300, "_bbp_author_ip", g.ip()); pm(301, "_bbp_author_ip", g.ip()) },
+		700: func() {
+			pm(310, "customer_email", php([]any{"vip@fixture-mail.gr", "maria.p@fixture-mail.gr"}))
+			pm(310, "discount_type", "percent")
+		},
+		1900: func() {
+			pm(320, "_mail", php(kv{"subject", "[your-subject]", "sender", "[_site_title] <wordpress@fixture-store.test>",
+				"body", "From: [your-name]", "recipient", "office@fixture-store.gr", "additional_headers", "Reply-To: [your-email]"}))
+			pm(321, "_mail", php(kv{"subject", "Test", "recipient", "[_site_admin_email]", "body", "[your-email]"}))
+			pm(321, "_additional_settings", "demo_mode: on")
+		},
+		2640: func() { pm(302, "_bbp_author_ip", g.ip()); pm(303, "_bbp_author_ip", g.ip()) },
+	}
+	// Years of edits make wp_postmeta bigger than a scan reads whole: old
+	// slugs, page templates, ratings and image backups on the posts above.
+	// The keys above sit deep inside, away from the oldest, middle and
+	// newest rows a window sample reads.
+	for n := 0; n < 3500; n++ {
+		if add := special[n]; add != nil {
+			add()
+		}
+		pm(1+n%30, "_wp_old_slug", fmt.Sprintf("journal-entry-draft-%d", n))
+		pm(1+n%30, "_wp_page_template", "default")
+		pm(41+n%40, "_wc_average_rating", fmt.Sprintf("%d.%d", 3+g.intn(2), g.intn(10)))
+		pm(41+n%40, "_wc_review_count", fmt.Sprint(g.intn(40)))
+		pm(81+n%30, "_wp_attachment_backup_sizes", php(kv{"full-orig", kv{"width", 1600, "height", 1200, "file", fmt.Sprintf("photo-%d.jpg", n)}}))
+	}
 	f.insert("wp_posts", []string{"ID", "post_author", "post_date", "post_date_gmt", "post_content", "post_title",
 		"post_excerpt", "post_status", "comment_status", "ping_status", "post_password", "post_name", "post_modified",
 		"post_modified_gmt", "post_parent", "guid", "menu_order", "post_type", "post_mime_type", "comment_count"}, posts)
@@ -209,14 +263,29 @@ func (f *filler) wordpress() {
 		"comment_approved", "comment_agent", "comment_type", "comment_parent", "user_id"}, comments)
 	f.insert("wp_commentmeta", []string{"comment_id", "meta_key", "meta_value"}, commentmeta)
 
-	f.wordpressOptions(people[1])
+	f.wordpressOptions(people, logins)
 	f.wordpressTerms()
+	f.wordpressPlugins()
 	f.woocommerceOrders(people)
 	f.woocommerceRest(people)
 }
 
-func (f *filler) wordpressOptions(admin person) {
+// umEmailUser lists the users who signed up through Ultimate Member with
+// their email address as username; the canary's user is one of them.
+func umEmailUser(id int) bool { return id == 7 || (id >= 10 && id <= 14) }
+
+// umEmailKey is the user meta key Ultimate Member builds from an email
+// address, with the @ and the dots taken out.
+func umEmailKey(email string) string {
+	return "um_email_as_username_" + strings.NewReplacer("@", "", ".", "").Replace(strings.ToLower(email))
+}
+
+func (f *filler) wordpressOptions(people []person, logins []string) {
 	g := f.g
+	admin := people[1]
+	event := func(schedule string, interval int) kv {
+		return kv{g.hex(32), kv{"schedule", schedule, "args", []any{}, "interval", interval}}
+	}
 	opts := [][]any{
 		{"siteurl", "https://shop.fixture-store.test", "yes"},
 		{"home", "https://shop.fixture-store.test", "yes"},
@@ -236,9 +305,16 @@ func (f *filler) wordpressOptions(admin person) {
 			"sendgrid", kv{"api_key", g.sendgridKey(), "domain", ""}}), "yes"},
 		{"as3cf_settings", php(kv{"provider", "aws", "access-key-id", g.awsKeyID(), "bucket", "fixture-media"}), "yes"},
 		{"active_plugins", php([]any{"woocommerce/woocommerce.php", "wp-mail-smtp/wp_mail_smtp.php",
-			"woocommerce-gateway-stripe/woocommerce-gateway-stripe.php"}), "yes"},
-		{"cron", php(kv{1760000000, kv{"wp_version_check", kv{g.hex(32), kv{"schedule", "twicedaily", "args", []any{}}}}, "version", 2}), "yes"},
+			"woocommerce-gateway-stripe/woocommerce-gateway-stripe.php", "woocommerce-shipping/woocommerce-shipping.php"}), "yes"},
+		{"cron", php(kv{
+			1760000000, kv{"wp_version_check", event("twicedaily", 43200)},
+			1760000100, kv{"updraft_backup", event("daily", 86400)},
+			1760000200, kv{"woocommerce_tracker_send_event", event("daily", 86400)},
+			1760000300, kv{"wpforms_email_summaries_cron", event("weekly", 604800)},
+			1760000400, kv{"um_daily_scheduled_events", event("daily", 86400)},
+			"version", 2}), "yes"},
 	}
+	opts = append(opts, f.wordpressSettings(people, logins)...)
 	for i := 0; i < 150; i++ {
 		switch i % 3 {
 		case 0:
@@ -250,6 +326,95 @@ func (f *filler) wordpressOptions(admin person) {
 		}
 	}
 	f.insert("wp_options", []string{"option_name", "option_value", "autoload"}, opts)
+}
+
+// wordpressSettings returns plugin settings that hold personal data or
+// secrets, and some that only look as if they did. They sit between the
+// first options and the filler, away from the rows a window sample reads.
+func (f *filler) wordpressSettings(people []person, logins []string) [][]any {
+	g := f.g
+	var opts [][]any
+	opt := func(name, value string) { opts = append(opts, []any{name, value, "no"}) }
+
+	// Ultimate Member's per-user profile caches.
+	for id := 1; id < len(people); id++ {
+		p := people[id]
+		profile := kv{"ID", id, "user_login", logins[id], "user_email", p.email, "user_pass", g.phpass(),
+			"display_name", p.first + " " + p.last, "account_status", "approved"}
+		if umEmailUser(id) {
+			profile = append(profile, umEmailKey(p.email), p.email)
+		}
+		opt(fmt.Sprintf("um_cache_userdata_%d", id), php(profile))
+	}
+
+	// Secrets, assembled at run time.
+	opt("secret_key", g.chars(cryptChars+"!@#%^&*()-_=+[]{}<>~", 64))
+	opt("wp_mail_smtp_mail_key", base64.StdEncoding.EncodeToString([]byte(g.alnum(32))))
+	opt("wpgmza_temp_api", "AI"+"za"+g.chars(alnumChars+"_-", 35))
+	opt("fixture_hashids_salt", g.alnum(32))
+	titles := kv{}
+	for i := 0; i < 60; i++ {
+		titles = append(titles, fmt.Sprintf("pt_type_%c%c_title", 'a'+i/26, 'a'+i%26), "%title% %sep% %sitename% "+g.sentence(8))
+	}
+	titles = append(titles, "facebook_admin_id", "", "facebook_secret", g.alnum(32))
+	opt("rank-math-options-titles", php(titles))
+
+	// Limit Login Attempts keys its arrays by visitor IP.
+	ip1, ip2, ip3 := g.ip(), g.ip(), g.ip()
+	opt("limit_login_lockouts", php(kv{ip1, 1760000000, ip2, 1760000300}))
+	opt("limit_login_retries", php(kv{ip3, 2}))
+	opt("limit_login_retries_valid", php(kv{ip3, 1760000600}))
+	opt("limit_login_logged", php(kv{ip1, kv{"admin", 3}}))
+
+	// Staff notifications.
+	opt("woocommerce_new_order_settings", php(kv{"enabled", "yes", "recipient", "staff@fixture-store.gr, owner@fixture-store.gr",
+		"subject", "", "heading", "", "email_type", "html"}))
+	opt("woocommerce_cancelled_order_settings", php(kv{"enabled", "yes", "recipient", "staff@fixture-store.gr"}))
+	opt("woocommerce_failed_order_settings", php(kv{"enabled", "no", "recipient", ""}))
+	opt("fixture_admin_recipient", "manager@fixture-store.gr")
+	opt("woocommerce_wc_memberships_user_membership_ending_soon_email_settings", php(kv{"enabled", "yes"}))
+	opt("woocommerce_wc_memberships_user_membership_ended_email_settings", php(kv{"enabled", "yes"}))
+	opt("woocommerce_wc_memberships_user_membership_renewal_reminder_email_settings", php(kv{"enabled", "no"}))
+
+	// Connected services, tracking and backups.
+	opt("jetpack_private_options", php(kv{"blog_token", g.alnum(32) + "." + g.alnum(32)}))
+	opt("woocommerce_allow_tracking", "yes")
+	opt("updraft_service", php([]any{"s3"}))
+
+	// Names that say more than the values hold.
+	opt("fixture_db_version", "1.8.1.2")
+	opt("woocommerce_registration_generate_password", "yes")
+	opt("woocommerce_myaccount_lost_password_endpoint", "lost-password")
+	opt("woocommerce_myaccount_edit_address_endpoint", "edit-address")
+	opt("woocommerce_email_background_color", "#f7f7f7")
+	opt("woocommerce_eu_vat_number_validate", "yes")
+	opt("_transient_fixture_customer_email", "42")
+	return opts
+}
+
+// wordpressPlugins fills plugin tables: WooCommerce admin notes, an
+// import plugin's column mappings and Ultimate Member's member fields.
+func (f *filler) wordpressPlugins() {
+	g := f.g
+	var notes [][]any
+	for i, name := range []string{"wc-admin-new-sales-record", "wc-admin-onboarding-email-marketing", "wc-admin-mobile-app",
+		"wc-admin-store-notice-giving-feedback", "wc-admin-insight-first-sale", "wc-admin-launch-checklist"} {
+		notes = append(notes, []any{name, "info", "en_US", "Note " + fmt.Sprint(i), "unactioned"})
+	}
+	f.insert("wp_wc_admin_notes", []string{"name", "type", "locale", "title", "status"}, notes)
+
+	mapping := php(kv{"mapping_fields", kv{"billing_address_1", "billing_address_1", "billing_first_name", "billing_first_name",
+		"billing_last_name", "billing_last_name", "billing_city", "{billing_city}", "billing_postcode", "{billing_postcode}"}})
+	f.insert("wp_wt_iew_mapping_template", []string{"template_type", "item_type", "name", "data"}, [][]any{
+		{"export", "user", "Customers", mapping}, {"import", "user", "Customers in", mapping},
+	})
+
+	var meta [][]any
+	for uid := 2; uid <= 20; uid++ {
+		meta = append(meta, []any{uid, "account_status", "approved"}, []any{uid, "_um_last_login", fmt.Sprint(1759000000 + g.intn(900000))},
+			[]any{uid, "mobile_number", g.phone()})
+	}
+	f.insert("wp_um_metadata", []string{"user_id", "um_key", "um_value"}, meta)
 }
 
 func (f *filler) wordpressTerms() {

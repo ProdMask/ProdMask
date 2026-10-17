@@ -3,6 +3,7 @@ package preset
 import (
 	"fmt"
 
+	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/sample"
 )
@@ -52,7 +53,7 @@ func (e *env) laravel() bool {
 	if e.has("jobs", "queue") {
 		total, err := e.count("SELECT COUNT(*) FROM `jobs`")
 		if err != nil {
-			e.warn(fmt.Sprintf("could not count queued jobs: %v", err))
+			e.warn(fmt.Sprintf("could not count queued jobs: %s", dbconn.ErrorText(err)))
 		} else if total > 0 {
 			rows, _ := e.rows("SELECT queue, COUNT(*) FROM " + sample.QuoteIdent("jobs") + " GROUP BY queue ORDER BY COUNT(*) DESC LIMIT 5")
 			e.sideEffect(model.SideEffect{

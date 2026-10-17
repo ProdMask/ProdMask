@@ -86,7 +86,10 @@ var (
 
 // normKey makes a key safe and stable for a path. Keys that are not plain
 // identifiers (numbers, hashes, emails, anything with spaces) may be data
-// themselves, so they collapse to "*" or "[]" and are never shown.
+// themselves, so they collapse to "*" or "[]" and are never shown. In
+// identifiers, the parts that look like data are templated as in key names:
+// a cached profile keyed by um_email_as_username_<email> shows as
+// um_email_as_username_*.
 func normKey(k string) string {
 	if i := strings.LastIndexByte(k, 0); i >= 0 { // PHP private/protected properties
 		k = k[i+1:]
@@ -101,6 +104,12 @@ func normKey(k string) string {
 		return "*"
 	case !reIdentKey.MatchString(k):
 		return "*"
+	}
+	if t := Template(k).Pattern; t != k {
+		if countLetters(t) < 3 {
+			return "*"
+		}
+		return t
 	}
 	return k
 }
@@ -121,14 +130,30 @@ func isDigits(s string) bool {
 }
 
 // keyIsData reports whether a raw key looks like a value worth checking,
-// such as a map keyed by email address.
-func keyIsData(k string) bool { return strings.Contains(k, "@") && IsEmail(strings.TrimSpace(k)) }
+// such as a map keyed by email address or by visitor IP (Limit Login
+// Attempts keeps lockouts that way).
+func keyIsData(k string) bool {
+	k = strings.TrimSpace(k)
+	return (strings.Contains(k, "@") && IsEmail(k)) || (strings.ContainsAny(k, ".:") && isIP(k) && !versionQuad(k))
+}
+
+// keysPath is the path segment for the keys of a map whose keys are data.
+// It only ever ends a path; the values under those keys stay under "*".
+const keysPath = "{}"
 
 func extend(path []string, key string) []string {
 	if len(path) >= maxPathParts {
 		return path
 	}
 	return append(path, key)
+}
+
+// Walk feeds every leaf of a JSON or PHP-serialized value to fn, with its
+// path as JoinPath would render it in parts. Keys that may be data are
+// already reduced to "*", "[]" or "{}". It returns false when the value is
+// neither. Callers must never print the values.
+func Walk(s string, fn func(path []string, value string)) bool {
+	return walkStructured(strings.TrimSpace(s), fn)
 }
 
 // Flatten returns the leaves of a JSON or PHP-serialized value by path,
@@ -146,12 +171,13 @@ func Flatten(s string) map[string]string {
 	return out
 }
 
-// JoinPath renders a path: billing.email, items[].name, cart.*.line_total.
+// JoinPath renders a path: billing.email, items[].name, cart.*.line_total,
+// lockouts{} (the keys of a map keyed by data).
 func JoinPath(path []string) string {
 	var b strings.Builder
 	for _, p := range path {
-		if p == "[]" {
-			b.WriteString("[]")
+		if p == "[]" || p == keysPath {
+			b.WriteString(p)
 			continue
 		}
 		if b.Len() > 0 {
@@ -189,7 +215,7 @@ func (j *jsonWalker) value(path []string, depth int) error {
 				k, _ := kt.(string)
 				if keyIsData(k) {
 					j.leaves++
-					j.w.fn(extend(path, "*"), k)
+					j.w.fn(extend(path, keysPath), k)
 				}
 				if err := j.value(extend(path, normKey(k)), depth+1); err != nil {
 					return err
@@ -390,7 +416,7 @@ func (p *phpParser) key(path []string) (string, bool) {
 		p.i += 1 + n + 2
 		if keyIsData(k) {
 			p.leaves++
-			p.w.fn(extend(path, "*"), k)
+			p.w.fn(extend(path, keysPath), k)
 		}
 		return normKey(k), true
 	}

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/detect"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/sample"
@@ -396,8 +397,8 @@ func Verify(ctx context.Context, q Querier, ids *IDValues, schema *model.Schema,
 		pk := parent.Column(r.ParentColumns[0])
 		found, err := lookup(ctx, q, parent, pk, values, timeout)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("could not check %s.%s → %s: %v",
-				r.ChildTable, r.ChildColumns[0], r.ParentTable, err))
+			warnings = append(warnings, fmt.Sprintf("could not check %s.%s → %s: %s",
+				r.ChildTable, r.ChildColumns[0], r.ParentTable, dbconn.ErrorText(err)))
 			out = append(out, r)
 			continue
 		}

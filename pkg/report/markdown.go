@@ -56,6 +56,10 @@ func Markdown(w io.Writer, res *model.Result) error {
 	if res.Options.Samples {
 		sampling = fmt.Sprintf("%s rows sampled (up to %d per table, %d per key/value table)",
 			thousands(s.RowsSampled), res.Options.SampleRows, res.Options.MetaSampleRows)
+		if res.Options.KeySampleRows > 0 {
+			sampling = fmt.Sprintf("%s rows sampled (up to %d per table, and up to %d per key in key/value tables)",
+				thousands(s.RowsSampled), res.Options.SampleRows, res.Options.KeySampleRows)
+		}
 	}
 	pf("- **Scanned:** %d tables, %s, on %s, in %s\n", s.Tables-s.Views, sampling,
 		res.GeneratedAt.Format("2006-01-02 15:04 MST"), seconds(s.DurationMillis))

@@ -17,7 +17,7 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
 
 It knows WordPress and WooCommerce, Magento 2 and Laravel, and works on any MySQL or MariaDB schema.
 
-Reports name tables, columns, keys and JSON paths, with counts and categories. They never contain the sampled values.
+Reports name tables, columns, keys and JSON paths, with counts and categories. They never contain the sampled values. Key names can hold data too, such as a user's email address inside a meta key. Those are shown as patterns like `um_email_as_username_*`, one line for all the keys that share the pattern.
 
 ## Install
 
@@ -26,7 +26,7 @@ Reports name tables, columns, keys and JSON paths, with counts and categories. T
 3. Check the archive against it. On macOS, use `shasum -a 256 -c` instead of `sha256sum -c`:
 
 ```bash
-grep prodmask_0.1.0_linux_amd64.tar.gz checksums.txt | sha256sum -c
+grep prodmask_0.2.0_linux_amd64.tar.gz checksums.txt | sha256sum -c
 ```
 
 4. Unpack the archive and put `prodmask` on your `PATH`.
@@ -61,7 +61,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found |
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
-| `--meta-sample-rows` | 3000 | rows sampled per key/value table such as `wp_postmeta` |
+| `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
 | `--no-samples` | | judge column names only; read no rows |
 | `--timeout` | `10s` | server-side limit for each statement |
 | `--verbose` | | also list low-confidence matches, inferred relationships and full evidence |
@@ -83,11 +83,20 @@ prodmask scan --dsn "$STAGING_DSN" --fail-on high --format markdown --out prodma
   - `lock_wait_timeout` of 5 seconds, so it never queues behind a schema change;
   - a server-side statement timeout (`max_statement_time` on MariaDB, `max_execution_time` on MySQL).
 - **Queries:**
-  - every sampling query is a `SELECT … LIMIT`, ordered by primary key where there is one;
-  - text values are cut to 4,096 characters on the server;
+  - every sampling query is a `SELECT` with a `LIMIT`, ordered by primary key where there is one; key/value lookups (below) have a `LIMIT` per key instead;
+  - text values are cut to 4,096 characters on the server, and settings to 65,536;
   - binary columns are skipped;
   - row counts come from `information_schema` estimates.
-- **Small extra checks:** a few indexed queries look for pending jobs and active webhooks, and some lookups (`IN` lists of up to 100 sampled IDs) verify inferred relationships.
+- **Key/value tables** (`wp_options`, `wp_postmeta`, Magento EAV and the like) are read key by key where they can be, so a key on only a few rows is still seen:
+  - **Small tables:** a table of up to 20,000 rows and 32 MB is read once.
+  - **Larger tables:** when its key column is indexed and the server enforces the statement timeout, a larger table has its keys listed with one `SELECT DISTINCT`. Up to 20 rows per key are then read with indexed lookups, alongside the usual sample of 3,000 rows.
+    - **Prefix indexes:** a table indexed only on a prefix of its key column, as WordPress meta tables are, needs a full scan to list its keys. It's listed only up to 256 MB.
+  - **Bigger tables**, and tables whose keys can't be listed, are sampled, 3,000 rows each, plus lookups for the keys the platform presets know. Without an index on the key column, those lookups are one pass over the table, run only when the table is small or the server enforces the statement timeout.
+  - **Budgets:** a scan looks up at most 3,000 keys and reads at most 32 MB of values per table, and 30,000 keys, 256 MB of values and 1 GB of full-scan listings and passes in all, the main site's tables first.
+  - **What's left out:** keys past these limits, or past the first 200,000 of a table, are judged by name only, and a warning says so. In a sampled table, keys outside the sample that no preset knows aren't seen.
+- **Small extra checks:**
+  - a few queries on indexed columns look for pending jobs, active webhooks, scheduled WordPress events, plugin email settings and Contact Form 7 forms;
+  - some lookups (`IN` lists of up to 100 sampled IDs) verify inferred relationships.
 
 Give it a user that can only read:
 
@@ -103,11 +112,13 @@ The report warns when the user it runs as could change the database.
 `--config-out prodmask.yml` turns the findings into a starting point for masking:
 
 - a strategy per column, meta key or JSON path (`fake_email`, `fake_phone`, `hash`, `null`, …), with a different one for some rows where a platform needs it, such as the WooCommerce orders among WordPress posts;
+- one rule per family of keys, written as a pattern such as `"um_cache_userdata_*": delete`, where `*` stands for the part that varies. Caches the platform rebuilds get `delete`.
+- a `name:` rule beside `mask:` when the key names themselves hold personal data;
 - tables to empty;
 - the inferred relationships;
 - the settings to neutralise.
 
-Weak matches appear commented out. Review every line: the config is a starting point, not a guarantee.
+Weak matches appear commented out. The file's header explains patterns and paths. Review every line: the config is a starting point, not a guarantee.
 
 ## Development
 

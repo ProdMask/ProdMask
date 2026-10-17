@@ -70,7 +70,7 @@ func Load(ctx context.Context, q Querier, database string) (*model.Schema, error
 		return nil, fmt.Errorf("list columns: %w", err)
 	}
 
-	rows, err = q.QueryContext(ctx, `SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME
+	rows, err = q.QueryContext(ctx, `SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, INDEX_TYPE
 		FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ?
 		ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`, database)
 	if err != nil {
@@ -82,8 +82,10 @@ func Load(ctx context.Context, q Querier, database string) (*model.Schema, error
 			nonUnique    int
 			seq          int
 			column       sql.NullString
+			subPart      sql.NullInt64
+			indexType    sql.NullString
 		)
-		if err := rows.Scan(&table, &index, &nonUnique, &seq, &column); err != nil {
+		if err := rows.Scan(&table, &index, &nonUnique, &seq, &column, &subPart, &indexType); err != nil {
 			return err
 		}
 		t := byName[table]
@@ -91,10 +93,11 @@ func Load(ctx context.Context, q Querier, database string) (*model.Schema, error
 			return nil
 		}
 		if seq == 1 || len(t.Indexes) == 0 || t.Indexes[len(t.Indexes)-1].Name != index {
-			t.Indexes = append(t.Indexes, model.Index{Name: index, Unique: nonUnique == 0})
+			t.Indexes = append(t.Indexes, model.Index{Name: index, Unique: nonUnique == 0, Type: strings.ToUpper(indexType.String)})
 		}
 		ix := &t.Indexes[len(t.Indexes)-1]
 		ix.Columns = append(ix.Columns, column.String) // empty for functional key parts
+		ix.SubParts = append(ix.SubParts, int(subPart.Int64))
 		if index == "PRIMARY" && column.Valid {
 			t.PrimaryKey = append(t.PrimaryKey, column.String)
 		}

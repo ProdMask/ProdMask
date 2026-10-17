@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/detect"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/sample"
@@ -26,9 +27,36 @@ var wooOrderTypes = []string{"shop_order", "shop_order_refund", "shop_order_plac
 // orders, and a site scanned without the WooCommerce preset may have them.
 func postPasswordHint(sev model.Severity, platform, note string) *detect.Hint {
 	return &detect.Hint{Category: model.CatSecret, Severity: sev, Mask: "keep", Source: "preset:" + platform, Note: note,
-		Rows: []model.RowMask{{Where: "post_type IN ('" + strings.Join(wooOrderTypes, "', '") + "')", Mask: "null",
-			Note: "WooCommerce order keys; anyone with one in a link can view the order"}}}
+		Rows: []model.RowMask{
+			{Where: "post_type IN ('" + strings.Join(wooOrderTypes, "', '") + "')", Mask: "null",
+				Note: "WooCommerce order keys; anyone with one in a link can view the order"},
+			{Where: privacyRequests, Mask: "null",
+				Note: "the hashed confirmation key of a privacy request"},
+		}}
 }
+
+// privacyRequests selects the personal data export and erasure requests
+// among WordPress posts. They hold the requester's email address in the
+// title, and a hashed confirmation key in post_password.
+const privacyRequests = "post_type = 'user_request'"
+
+// The keys and salts WordPress signs login cookies and nonces with, when
+// wp-config.php doesn't define them; secret_key is the fallback of them all.
+var wordpressSalts = []string{"secret_key", "auth_key", "auth_salt", "secure_auth_key", "secure_auth_salt",
+	"logged_in_key", "logged_in_salt", "nonce_key", "nonce_salt"}
+
+// transientHint suggests deleting WordPress transients: cached data that
+// WordPress and plugins rebuild.
+func transientHint(key string) *detect.Hint {
+	if strings.HasPrefix(key, "_transient_") || strings.HasPrefix(key, "_site_transient_") {
+		return &detect.Hint{Delete: true, Source: "preset:" + wp, Note: "a transient: cached data WordPress rebuilds"}
+	}
+	return nil
+}
+
+// umCache is Ultimate Member's cache of each user's profile.
+var umCache = detect.FamilyRule{Prefix: "um_cache_userdata_", Hint: &detect.Hint{Delete: true, Source: "preset:" + wp,
+	Note: "Ultimate Member's per-user profile cache, password hash included; the plugin rebuilds it"}}
 
 // wordpressPrefixes finds the table prefix of every WordPress site in the
 // database: wp_ for a single site, wp_ plus wp_2_, wp_3_ ... for multisite.
@@ -79,7 +107,9 @@ func (e *env) wordpress(woo bool) (bool, bool) {
 	e.res.Platforms = append(e.res.Platforms, pl)
 
 	e.wordpressUsers(base)
+	e.wordpressNetwork(base)
 	foundWoo := false
+	var shops []string
 	for _, p := range prefixes {
 		opts := baseOpts
 		if p != base {
@@ -89,9 +119,30 @@ func (e *env) wordpress(woo bool) (bool, bool) {
 		if woo && (e.has(p+"woocommerce_order_items") || e.has(p+"wc_orders") || opts["woocommerce_version"] != "") {
 			e.woocommerce(p, base, opts)
 			foundWoo = true
+			shops = append(shops, p)
 		}
 	}
+	e.wordpressEffects(prefixes, base, shops)
 	return true, foundWoo
+}
+
+// wordpressNetwork describes wp_sitemeta, where a multisite network keeps
+// its own settings: the salts wp_salt() reads with get_site_option, and the
+// settings of network-activated plugins.
+func (e *env) wordpressNetwork(b string) {
+	hints := map[string]*detect.Hint{}
+	for _, k := range wordpressSalts {
+		hints[k] = saltHint()
+	}
+	e.meta(b+"sitemeta", &MetaTable{
+		Key: "meta_key", Value: "meta_value", Platform: wp, Keys: hints, Probe: append([]string(nil), wordpressSalts...),
+		HintFor: transientHint, Settings: true, Primary: true,
+	})
+}
+
+func saltHint() *detect.Hint {
+	return &detect.Hint{Category: model.CatSecret, Source: "preset:" + wp,
+		Note: "authentication key or salt; a copy that keeps it trusts production login cookies"}
 }
 
 func (e *env) siteOptions(p string) map[string]string {
@@ -118,6 +169,7 @@ func (e *env) wordpressUsers(b string) {
 		},
 		Probe: []string{"first_name", "last_name", "nickname", "description", "session_tokens",
 			"billing_email", "billing_phone", "billing_address_1", "shipping_address_1"},
+		Primary: true,
 	})
 	e.rel(wp, usermeta, "user_id", users, "ID")
 }
@@ -129,32 +181,42 @@ func (e *env) wordpressSite(p, b string) {
 
 	e.column(posts, "post_password", postPasswordHint(model.SeverityLow, wp, "WordPress stores post passwords in plain text"))
 	e.column(comments, "comment_agent", hint(wp, model.CatUserAgent, ""))
+	e.res.RowSubjects = append(e.res.RowSubjects, RowSubject{
+		Table: posts, Column: "post_title", Where: privacyRequests, IndexColumn: "post_type",
+		Hint: metaHint(wp, model.CatEmail, "privacy requests keep the requester's email address in the title"),
+	})
 
+	main := p == b
 	e.meta(postmeta, &MetaTable{
 		Key: "meta_key", Value: "meta_value", Platform: wp,
 		Keys: map[string]*detect.Hint{
 			"_order_key": {Category: model.CatSecret, Severity: model.SeverityMedium, Source: "preset:" + wc,
 				Note: "anyone with this key in a link can view the order"},
 		},
+		// bbPress replies, coupon restrictions and Contact Form 7 mail settings.
+		Probe:   []string{"_bbp_author_ip", "customer_email", "_mail"},
+		Primary: main,
 	})
-	e.meta(commentmeta, &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wp})
+	e.meta(commentmeta, &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wp, Primary: main})
 
-	salt := &detect.Hint{Category: model.CatSecret, Source: "preset:" + wp,
-		Note: "authentication key or salt; a copy that keeps it trusts production login cookies"}
 	optionKeys := map[string]*detect.Hint{
 		"admin_email":      metaHint(wp, model.CatEmail, "site administrator"),
 		"new_admin_email":  metaHint(wp, model.CatEmail, "site administrator"),
 		"mailserver_login": metaHint(wp, model.CatEmail, "post-by-email mailbox"),
 		"mailserver_pass":  metaHint(wp, model.CatSecret, "post-by-email mailbox password"),
 		"recovery_keys":    metaHint(wp, model.CatSecret, "recovery mode keys"),
+		"wp_mail_smtp_mail_key": metaHint(wp, model.CatSecret,
+			"WP Mail SMTP's key; it decrypts the SMTP password it stores"),
 	}
-	for _, k := range []string{"auth_key", "auth_salt", "secure_auth_key", "secure_auth_salt",
-		"logged_in_key", "logged_in_salt", "nonce_key", "nonce_salt"} {
-		optionKeys[k] = salt
+	for _, k := range wordpressSalts {
+		optionKeys[k] = saltHint()
 	}
 	e.meta(options, &MetaTable{
 		Key: "option_name", Value: "option_value", Platform: wp, Keys: optionKeys,
-		Probe: []string{"admin_email", "mailserver_pass", "auth_salt", "logged_in_salt"},
+		Probe:    append([]string{"admin_email", "mailserver_pass", "wp_mail_smtp_mail_key"}, wordpressSalts...),
+		HintFor:  transientHint,
+		Families: []detect.FamilyRule{umCache},
+		Settings: true, Primary: main,
 	})
 
 	e.rel(wp, postmeta, "post_id", posts, "ID")
@@ -241,6 +303,9 @@ func (e *env) woocommerce(p, b string, opts map[string]string) {
 	e.column(p+"woocommerce_api_keys", "consumer_secret", hint(wc, model.CatSecret, "REST API secret"))
 	e.column(p+"woocommerce_api_keys", "truncated_key", &detect.Hint{Ignore: true})
 	e.column(p+"woocommerce_payment_tokens", "token", hint(wc, model.CatPaymentToken, "saved payment method at the gateway"))
+	// Admin notes are named by their slug, such as wc-admin-new-sales-record.
+	e.column(p+"wc_admin_notes", "name", &detect.Hint{Ignore: true})
+	e.column(p+"wc_admin_note_actions", "name", &detect.Hint{Ignore: true})
 
 	addressIndex := &detect.Hint{Category: model.CatAddress, Mask: "null", Source: "preset:" + wc,
 		Note: "search index of the full address, email and phone; WooCommerce rebuilds it"}
@@ -257,11 +322,12 @@ func (e *env) woocommerce(p, b string, opts map[string]string) {
 	if meta := e.res.Meta[p+"postmeta"]; meta != nil && !hpos {
 		meta.Probe = append(meta.Probe, orderProbe...)
 	}
+	main := p == b
 	e.meta(p+"wc_orders_meta", &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wc, Keys: orderMeta,
-		Probe: []string{"_billing_address_index", "_shipping_address_index", "_stripe_customer_id"}})
-	e.meta(p+"woocommerce_order_itemmeta", &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wc})
+		Probe: []string{"_billing_address_index", "_shipping_address_index", "_stripe_customer_id"}, Primary: main})
+	e.meta(p+"woocommerce_order_itemmeta", &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wc, Primary: main})
 	cardMeta := metaHint(wc, model.CatCardMeta, "")
-	e.meta(p+"woocommerce_payment_tokenmeta", &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wc,
+	e.meta(p+"woocommerce_payment_tokenmeta", &MetaTable{Key: "meta_key", Value: "meta_value", Platform: wc, Primary: main,
 		Keys: map[string]*detect.Hint{"last4": cardMeta, "expiry_year": cardMeta, "expiry_month": cardMeta, "card_type": cardMeta}})
 
 	e.action(p+"woocommerce_sessions", "truncate", "carts and checkout details of live visitors")
@@ -316,7 +382,7 @@ func (e *env) wooGateways(p string) {
 		" WHERE option_name LIKE ? ESCAPE '!' OR option_name = 'woocommerce-ppcp-settings' LIMIT 300",
 		"woocommerce!_%!_settings")
 	if err != nil {
-		e.warn(fmt.Sprintf("could not read WooCommerce payment settings: %v", err))
+		e.warn(fmt.Sprintf("could not read WooCommerce payment settings: %s", dbconn.ErrorText(err)))
 		return
 	}
 	for _, r := range rows {
@@ -336,8 +402,8 @@ func (e *env) wooGateways(p string) {
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(name, "woocommerce_"), "_settings")
 		e.sideEffect(model.SideEffect{
-			Platform: wc, Kind: "payments", Table: opts, Item: name, Severity: model.SeverityHigh,
-			Summary: fmt.Sprintf("Payment gateway %q is enabled in live mode", Safe(id)),
+			Platform: wc, Kind: "payments", Table: opts, Item: detect.ShowKey(name), Severity: model.SeverityHigh,
+			Summary: fmt.Sprintf("Payment gateway %q is enabled in live mode", detect.ShowKey(id)),
 			Fix:     "Switch the gateway to test or sandbox mode and remove the live keys in the copy",
 		})
 	}
@@ -350,7 +416,7 @@ func (e *env) wooWebhooks(p string) {
 	}
 	n, err := e.count("SELECT COUNT(*) FROM " + sample.QuoteIdent(t) + " WHERE status = 'active'")
 	if err != nil {
-		e.warn(fmt.Sprintf("could not count webhooks: %v", err))
+		e.warn(fmt.Sprintf("could not count webhooks: %s", dbconn.ErrorText(err)))
 		return
 	}
 	if n > 0 {
@@ -370,7 +436,7 @@ func (e *env) actionScheduler(p string) {
 	q := sample.QuoteIdent(t)
 	total, err := e.count("SELECT COUNT(*) FROM " + q + " WHERE status = 'pending'")
 	if err != nil {
-		e.warn(fmt.Sprintf("could not count scheduled actions: %v", err))
+		e.warn(fmt.Sprintf("could not count scheduled actions: %s", dbconn.ErrorText(err)))
 		return
 	}
 	if total == 0 {
@@ -378,12 +444,12 @@ func (e *env) actionScheduler(p string) {
 	}
 	rows, err := e.rows("SELECT hook, COUNT(*) FROM " + q + " WHERE status = 'pending' GROUP BY hook ORDER BY COUNT(*) DESC LIMIT 10")
 	if err != nil {
-		e.warn(fmt.Sprintf("could not group scheduled actions: %v", err))
+		e.warn(fmt.Sprintf("could not group scheduled actions: %s", dbconn.ErrorText(err)))
 	}
 	for _, r := range rows {
 		if strings.Contains(r[0], "scheduled_subscription_payment") {
 			e.sideEffect(model.SideEffect{
-				Platform: wc, Kind: "payments", Table: t, Item: Safe(r[0]), Severity: model.SeverityCritical,
+				Platform: wc, Kind: "payments", Table: t, Item: detect.ShowKey(r[0]), Severity: model.SeverityCritical,
 				Count:   parseCount(r[1]),
 				Summary: fmt.Sprintf("%s subscription renewal payments are scheduled; staging would try to charge customers when they fall due", r[1]),
 				Fix:     "Cancel these actions in the copy, or make sure WooCommerce Subscriptions starts in staging mode",

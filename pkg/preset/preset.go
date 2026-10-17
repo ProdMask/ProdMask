@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/detect"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/sample"
@@ -35,6 +36,15 @@ type MetaTable struct {
 	Probe      []string                      // keys worth reading directly if the sample misses them
 	HintFor    func(key string) *detect.Hint // pattern-based hints
 	Label      func(key string) string       // maps raw keys to names, e.g. Magento attribute IDs
+	// Families are keys known to share a prefix, such as Ultimate Member's
+	// per-user caches. They are grouped and probed by prefix.
+	Families []detect.FamilyRule
+	// Settings marks a table that holds one row per key, such as
+	// wp_options, even when it lost its unique index.
+	Settings bool
+	// Primary marks the tables of the main site and the shared ones; a
+	// scan spends its budgets on them first.
+	Primary bool
 }
 
 // Hint returns what the preset knows about one key.
@@ -46,6 +56,19 @@ func (m *MetaTable) Hint(key string) *detect.Hint {
 		return m.HintFor(key)
 	}
 	return nil
+}
+
+// RowSubject is a column whose data depends on the row, such as the title
+// of a WordPress privacy request, which holds the requester's email.
+type RowSubject struct {
+	Table, Column string
+	// Where selects the rows. It is a constant written in the preset,
+	// never text from the database.
+	Where string
+	// IndexColumn must lead an index, so the rows are found without a
+	// full scan; without one the subject is skipped.
+	IndexColumn string
+	Hint        *detect.Hint
 }
 
 // TableAction is advice for a whole table, e.g. to empty it in the copy.
@@ -63,6 +86,7 @@ type Result struct {
 	Relationships []model.Relationship
 	Prefixes      []string
 	SideEffects   []model.SideEffect
+	RowSubjects   []RowSubject
 	Warnings      []string
 }
 
@@ -221,7 +245,7 @@ func (e *env) options(table, keyCol, valueCol string, keys []string) map[string]
 	}
 	rows, err := e.rows(q, args...)
 	if err != nil {
-		e.warn(fmt.Sprintf("could not read settings from %s: %v", table, err))
+		e.warn(fmt.Sprintf("could not read settings from %s: %s", table, dbconn.ErrorText(err)))
 		return out
 	}
 	for _, r := range rows {
@@ -273,7 +297,7 @@ func topCounts(rows [][]string, n int) string {
 		if i == n {
 			break
 		}
-		parts = append(parts, fmt.Sprintf("%s (%s)", Safe(r[0]), r[1]))
+		parts = append(parts, fmt.Sprintf("%s (%s)", detect.ShowKey(r[0]), r[1]))
 	}
 	return strings.Join(parts, ", ")
 }

@@ -145,10 +145,23 @@ func (c Category) Label() string { return c.Info().Label }
 
 // Finding is one column, meta key or JSON path that holds sensitive data.
 type Finding struct {
-	Table      string     `json:"table"`
-	Column     string     `json:"column"`
-	MetaKey    string     `json:"meta_key,omitempty"`
-	Path       string     `json:"path,omitempty"`
+	Table  string `json:"table"`
+	Column string `json:"column"`
+	// MetaKey is a key of a key/value table, or a pattern such as
+	// um_cache_userdata_* where * stands for the part that varies between
+	// keys. The varying part may itself be data, so it is never shown.
+	MetaKey string `json:"meta_key,omitempty"`
+	// KeyName marks a finding about the key names themselves: Column is
+	// the key column, and the part of the names matched by * holds data.
+	KeyName bool `json:"key_name,omitempty"`
+	// Keys is how many keys a pattern stands for; KeysPartial says the
+	// count is a lower bound because the keys were sampled, not listed.
+	Keys        int    `json:"keys,omitempty"`
+	KeysPartial bool   `json:"keys_partial,omitempty"`
+	Path        string `json:"path,omitempty"`
+	// Where, when set, limits the finding to the rows that match it, such
+	// as the privacy requests among WordPress posts.
+	Where      string     `json:"where,omitempty"`
 	Category   Category   `json:"category"`
 	Severity   Severity   `json:"severity"`
 	Confidence Confidence `json:"confidence"`
@@ -170,6 +183,23 @@ type RowMask struct {
 	Note  string `json:"note,omitempty"`
 }
 
+// KeyCount renders how many keys a pattern stands for: "1,541 keys", or
+// "at least 20 keys" when the keys were sampled rather than listed.
+func (f Finding) KeyCount() string {
+	n := fmt.Sprint(f.Keys)
+	for i := len(n) - 3; i > 0; i -= 3 {
+		n = n[:i] + "," + n[i:]
+	}
+	s := n + " keys"
+	if f.Keys == 1 {
+		s = "1 key"
+	}
+	if f.KeysPartial {
+		s = "at least " + s
+	}
+	return s
+}
+
 // Location renders where a finding is, e.g. wp_usermeta.meta_value[billing_phone].
 func (f Finding) Location() string {
 	s := f.Table + "." + f.Column
@@ -178,6 +208,9 @@ func (f Finding) Location() string {
 	}
 	if f.Path != "" {
 		s += " → " + f.Path
+	}
+	if f.Where != "" {
+		s += " where " + f.Where
 	}
 	return s
 }
@@ -288,12 +321,36 @@ func (t *Table) SinglePK() *Column {
 
 // HasIndexOn reports whether some index starts with the given column.
 func (t *Table) HasIndexOn(column string) bool {
+	return t.KeyIndex(column).Found
+}
+
+// IndexUse says how a column can be looked up through the table's indexes.
+type IndexUse struct {
+	Found  bool // some index starts with the column
+	Full   bool // one of them indexes the whole column, not a prefix of it
+	Unique bool // a unique index covers exactly this column, in full
+}
+
+// KeyIndex describes the indexes that start with a column.
+func (t *Table) KeyIndex(column string) IndexUse {
+	var u IndexUse
 	for _, ix := range t.Indexes {
-		if len(ix.Columns) > 0 && strings.EqualFold(ix.Columns[0], column) {
-			return true
+		if len(ix.Columns) == 0 || !strings.EqualFold(ix.Columns[0], column) {
+			continue
+		}
+		if ix.Type == "FULLTEXT" || ix.Type == "SPATIAL" {
+			continue // no help for = or LIKE 'prefix%'
+		}
+		u.Found = true
+		full := len(ix.SubParts) == 0 || ix.SubParts[0] == 0
+		if full {
+			u.Full = true
+			if ix.Unique && len(ix.Columns) == 1 {
+				u.Unique = true
+			}
 		}
 	}
-	return false
+	return u
 }
 
 // Column is one column of a table.
@@ -318,7 +375,11 @@ func (c *Column) AutoIncrement() bool {
 type Index struct {
 	Name    string
 	Unique  bool
+	Type    string // BTREE, HASH, FULLTEXT or SPATIAL (information_schema INDEX_TYPE)
 	Columns []string
+	// SubParts holds, per column, the length of an indexed prefix, or 0
+	// when the whole column is indexed (information_schema SUB_PART).
+	SubParts []int
 }
 
 // ForeignKey is one declared foreign key.
@@ -357,6 +418,7 @@ type TableSummary struct {
 	Highest      Severity `json:"highest_severity"`
 	KeyColumn    string   `json:"key_column,omitempty"`
 	ValueColumn  string   `json:"value_column,omitempty"`
+	Keys         int      `json:"keys,omitempty"` // distinct keys read in a key/value table
 	Action       string   `json:"suggested_action,omitempty"`
 	ActionReason string   `json:"action_reason,omitempty"`
 	Error        string   `json:"error,omitempty"`
@@ -366,6 +428,7 @@ type TableSummary struct {
 type ScanOptions struct {
 	SampleRows     int     `json:"sample_rows"`
 	MetaSampleRows int     `json:"meta_sample_rows"`
+	KeySampleRows  int     `json:"key_sample_rows"`
 	Samples        bool    `json:"samples"`
 	Preset         string  `json:"preset"`
 	TimeoutSeconds float64 `json:"statement_timeout_seconds"`

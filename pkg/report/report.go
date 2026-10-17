@@ -130,11 +130,18 @@ func fieldName(f model.Finding) string {
 	if f.Path != "" {
 		s += " → " + f.Path
 	}
+	if f.Where != "" {
+		s += " where " + f.Where
+	}
 	return s
 }
 
 func evidence(f model.Finding) string {
-	parts := append([]string(nil), f.Reasons...)
+	var parts []string
+	if f.Keys > 0 {
+		parts = append(parts, f.KeyCount())
+	}
+	parts = append(parts, f.Reasons...)
 	if f.Note != "" {
 		parts = append(parts, f.Note)
 	}

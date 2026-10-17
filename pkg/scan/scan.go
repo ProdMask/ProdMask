@@ -6,7 +6,6 @@ package scan
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -23,8 +22,13 @@ import (
 // Options control a scan.
 type Options struct {
 	SampleRows     int  // rows per table
-	MetaSampleRows int  // rows per key/value table
+	MetaSampleRows int  // rows per key/value table too big to read whole
+	KeySampleRows  int  // rows per key of a key/value table
 	Samples        bool // false judges names only and reads no rows
+	// SampleKeysOnly reads every key/value table by sampling, as for tables
+	// too large to list their keys: a window of rows plus probes for the
+	// keys presets know.
+	SampleKeysOnly bool
 	Preset         string
 	MaxValueLen    int
 	Version        string
@@ -35,9 +39,8 @@ type Options struct {
 const (
 	DefaultSampleRows     = 300
 	DefaultMetaSampleRows = 3000
+	DefaultKeySampleRows  = 20
 	DefaultMaxValueLen    = 4096
-	maxMetaKeys           = 2000
-	probeRows             = 50
 )
 
 // Run scans the database behind the session.
@@ -46,12 +49,15 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 	if opts.MaxValueLen <= 0 {
 		opts.MaxValueLen = DefaultMaxValueLen
 	}
+	if opts.KeySampleRows <= 0 {
+		opts.KeySampleRows = DefaultKeySampleRows
+	}
 	res := &model.Result{
 		Tool: "prodmask", Version: opts.Version, GeneratedAt: start.UTC().Truncate(time.Second),
 		Server: sess.Server, Database: sess.Database,
 		Options: model.ScanOptions{
-			SampleRows: opts.SampleRows, MetaSampleRows: opts.MetaSampleRows, Samples: opts.Samples,
-			Preset: opts.Preset, TimeoutSeconds: sess.Timeout.Seconds(),
+			SampleRows: opts.SampleRows, MetaSampleRows: opts.MetaSampleRows, KeySampleRows: opts.KeySampleRows,
+			Samples: opts.Samples, Preset: opts.Preset, TimeoutSeconds: sess.Timeout.Seconds(),
 		},
 		Warnings: append([]string(nil), sess.Warnings...),
 	}
@@ -77,12 +83,28 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 	sampler := &sample.Sampler{DB: sess.DB, MaxValueLen: opts.MaxValueLen, Timeout: queryTimeout}
 	ids := infer.NewIDValues()
 
-	for i, t := range schema.Tables {
+	metas := map[string]*preset.MetaTable{}
+	for _, t := range schema.Tables {
+		if !t.IsData() {
+			continue
+		}
+		if m := pr.Meta[t.Name]; m != nil {
+			metas[t.Name] = m
+		} else if m := genericMeta(t, pr); m != nil {
+			metas[t.Name] = m
+		}
+	}
+	// Key/value tables first, the main site's before the others, so they
+	// draw on the scan's budgets first.
+	order := planOrder(schema.Tables, metas)
+	b := newBudget()
+
+	for i, t := range order {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		if opts.Progress != nil {
-			opts.Progress(i, len(schema.Tables), t.Name)
+			opts.Progress(i, len(order), t.Name)
 		}
 		ts := model.TableSummary{Name: t.Name, Kind: "table", RowsEstimate: t.RowsEstimate}
 		if a, ok := pr.Actions[t.Name]; ok {
@@ -96,39 +118,62 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 			res.Tables = append(res.Tables, ts)
 			continue
 		}
-		meta := pr.Meta[t.Name]
-		if meta == nil {
-			meta = genericMeta(t)
-		}
+		meta := metas[t.Name]
 		if meta != nil {
 			ts.Kind = "key/value"
 			ts.KeyColumn, ts.ValueColumn = meta.Key, meta.Value
 		}
 
-		var s *sample.Sample
+		var (
+			s  *sample.Sample
+			kv *kvRead
+		)
 		if opts.Samples {
 			limit := opts.SampleRows
 			if meta != nil {
-				limit = opts.MetaSampleRows
+				kv = readKV(ctx, sess, sampler, t, meta, opts, b)
+				// Lookups read each key's oldest rows; the window adds the
+				// middle and newest ones for keys on many rows, such as a
+				// nickname every user has. A whole read needs no window
+				// for its values.
+				if kv.mode != modeWhole {
+					limit = opts.MetaSampleRows
+				}
 			}
 			s, err = sampler.Table(ctx, t, limit)
 			if err != nil {
-				ts.Error = err.Error()
-				res.Warnings = append(res.Warnings, fmt.Sprintf("could not sample %s: %v", t.Name, err))
+				ts.Error = dbconn.ErrorText(err)
+				res.Warnings = append(res.Warnings, fmt.Sprintf("could not sample %s: %s", t.Name, ts.Error))
+			}
+			if kv != nil && kv.mode == modeSample {
+				kv.sampleKV(ctx, sampler, sess, t, meta, s, opts, b)
 			}
 			if s != nil {
 				ts.RowsSampled = len(s.Rows)
 				ids.Collect(t, s)
 			}
+			if kv != nil {
+				ts.RowsSampled += kv.rows
+				res.Warnings = append(res.Warnings, kv.warnings...)
+			}
 		}
 
 		var findings []model.Finding
-		if meta != nil {
-			var warns []string
-			findings, warns = analyzeMeta(ctx, t, s, meta, sampler)
-			res.Warnings = append(res.Warnings, warns...)
+		if kv != nil {
+			findings = analyzeKV(t, s, meta, kv)
+			ts.Keys = len(kv.keys)
+			if n, named := skippedSummary(t, kv); n > 0 {
+				res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s were not sampled (limits: %d keys and %d MB per table, "+
+					"%d keys and %d MB per scan); %d of them match names and are listed at low confidence in the JSON report",
+					n, t.Name, tableKeys, tableBytes>>20, scanKeys, scanBytes>>20, named))
+			}
 		}
 		findings = append(findings, analyzeColumns(t, s, pr, meta)...)
+		if opts.Samples {
+			fs, warns := rowSubjects(ctx, sampler, t, pr)
+			findings = append(findings, fs...)
+			res.Warnings = append(res.Warnings, warns...)
+		}
 		for _, f := range findings {
 			if f.Confidence > model.ConfidenceLow {
 				ts.Findings++
@@ -141,8 +186,9 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 		res.Tables = append(res.Tables, ts)
 	}
 	if opts.Progress != nil {
-		opts.Progress(len(schema.Tables), len(schema.Tables), "")
+		opts.Progress(len(order), len(order), "")
 	}
+	sort.SliceStable(res.Tables, func(i, j int) bool { return res.Tables[i].Name < res.Tables[j].Name })
 
 	inf := &infer.Inferrer{Schema: schema, IDs: ids, Prefixes: pr.Prefixes, Known: pr.Relationships}
 	rels, warns := infer.Verify(ctx, sess.DB, ids, schema, inf.Relationships(), queryTimeout)
@@ -174,7 +220,7 @@ func analyzeColumns(t *model.Table, s *sample.Sample, pr *preset.Result, meta *p
 		if s != nil {
 			if i := s.Index(c.Name); i >= 0 {
 				sub.Sampled = true
-				p = detect.NewProfile()
+				p = detect.NewProfileNamed(c.Name)
 				for _, row := range s.Rows {
 					if row[i].Valid {
 						p.Add(row[i].String)
@@ -187,83 +233,48 @@ func analyzeColumns(t *model.Table, s *sample.Sample, pr *preset.Result, meta *p
 	return out
 }
 
-// Meta keys are shown in reports, so they must look like labels: keys
-// made of other characters could be data themselves.
-var reMetaKey = regexp.MustCompile(`^[A-Za-z0-9_.:/ -]{1,64}$`)
+// rowSubjectRows is how many rows a row subject reads.
+const rowSubjectRows = 50
 
-// analyzeMeta judges each key of a key/value table as if it were a column.
-func analyzeMeta(ctx context.Context, t *model.Table, s *sample.Sample, meta *preset.MetaTable, sm *sample.Sampler) ([]model.Finding, []string) {
-	var warnings []string
-	groups := map[string]*detect.Profile{}
-	if s != nil {
-		ki, vi := s.Index(meta.Key), s.Index(meta.Value)
-		if ki >= 0 && vi >= 0 {
-			for _, row := range s.Rows {
-				if !row[ki].Valid {
-					continue
-				}
-				p := groups[row[ki].String]
-				if p == nil {
-					if len(groups) >= maxMetaKeys {
-						continue
-					}
-					p = detect.NewProfile()
-					groups[row[ki].String] = p
-				}
-				if row[vi].Valid {
-					p.Add(row[vi].String)
-				}
-			}
-		}
-		// Look known keys up directly when the sample missed them, if the
-		// key column is indexed or the table is small.
-		keyCol, valueCol := t.Column(meta.Key), t.Column(meta.Value)
-		if keyCol != nil && valueCol != nil && (t.HasIndexOn(meta.Key) || t.RowsEstimate < 200000) {
-			seen := map[string]bool{}
-			for _, k := range meta.Probe {
-				if groups[k] != nil || seen[k] {
-					continue
-				}
-				seen[k] = true
-				vals, err := sm.KeyValues(ctx, t, keyCol, valueCol, k, probeRows)
-				if err != nil {
-					warnings = append(warnings, fmt.Sprintf("could not read key %s of %s: %v", k, t.Name, err))
-					continue
-				}
-				if len(vals) == 0 {
-					continue
-				}
-				p := detect.NewProfile()
-				for _, v := range vals {
-					p.Add(v)
-				}
-				groups[k] = p
-			}
-		}
-	}
-	keys := make([]string, 0, len(groups))
-	for k := range groups {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+// rowSubjects judges the columns whose data depends on the row, such as
+// the titles of WordPress privacy requests. Each runs only when an index
+// leads with the column its condition filters on, so no subject needs a
+// full scan.
+func rowSubjects(ctx context.Context, sm *sample.Sampler, t *model.Table, pr *preset.Result) ([]model.Finding, []string) {
+	var (
+		out   []model.Finding
+		warns []string
+	)
 	words := detect.Tokens(t.Name)
-	var out []model.Finding
-	for _, k := range keys {
-		label := k
-		if meta.Label != nil {
-			label = meta.Label(k)
+	for _, rs := range pr.RowSubjects {
+		if rs.Table != t.Name {
+			continue
 		}
-		shown := label
-		if !reMetaKey.MatchString(shown) {
-			shown = "(key hidden)"
+		c := t.Column(rs.Column)
+		if c == nil {
+			continue
 		}
-		sub := detect.Subject{
-			Table: t.Name, Column: meta.Value, MetaKey: shown, Name: label, Context: words,
-			Hint: meta.Hint(k), Sampled: true,
+		if !t.KeyIndex(rs.IndexColumn).Found {
+			warns = append(warns, fmt.Sprintf("skipped the rows where %s in %s: no index on %s", rs.Where, t.Name, rs.IndexColumn))
+			continue
 		}
-		out = append(out, detect.Analyze(sub, groups[k])...)
+		vals, err := sm.Where(ctx, t, c, rs.Where, rowSubjectRows)
+		if err != nil {
+			warns = append(warns, fmt.Sprintf("could not read the rows where %s in %s (%s)", rs.Where, t.Name, dbconn.ErrorText(err)))
+			continue
+		}
+		if len(vals) == 0 {
+			continue
+		}
+		p := detect.NewProfileNamed(c.Name)
+		for _, v := range vals {
+			p.Add(v)
+		}
+		sub := detect.Subject{Table: t.Name, Column: c.Name, Name: c.Name, DataType: c.DataType, Context: words,
+			Hint: rs.Hint, Sampled: true, Where: rs.Where}
+		out = append(out, detect.Analyze(sub, p)...)
 	}
-	return out, warnings
+	return out, warns
 }
 
 // Column pairs that make a table a key/value store even without a preset.
@@ -276,11 +287,20 @@ var settingsWords = map[string]bool{"meta": true, "metadata": true, "option": tr
 	"setting": true, "settings": true, "config": true, "configuration": true, "preference": true,
 	"preferences": true, "property": true, "properties": true, "attribute": true, "attributes": true}
 
-func genericMeta(t *model.Table) *preset.MetaTable {
+// genericMeta recognises a key/value table without a preset: one of the
+// usual column pairs, or any X_key with an X_value beside it (Ultimate
+// Member's um_key and um_value). Sessions aren't settings, and a pair a
+// preset already describes column by column isn't one either. Binary
+// values are never read, so a pair with one isn't a key/value table.
+func genericMeta(t *model.Table, pr *preset.Result) *preset.MetaTable {
 	words := detect.Tokens(t.Name)
+	textKey := func(c *model.Column) bool { return c != nil && (c.DataType == "varchar" || c.DataType == "char") }
+	hinted := func(k, v *model.Column) bool {
+		return pr != nil && (pr.ColumnHint(t.Name, k.Name) != nil || pr.ColumnHint(t.Name, v.Name) != nil)
+	}
 	for _, pair := range metaPairs {
 		k, v := t.Column(pair[0]), t.Column(pair[1])
-		if k == nil || v == nil || !(k.DataType == "varchar" || k.DataType == "char") {
+		if v == nil || !sample.Sampleable(v) || !textKey(k) {
 			continue
 		}
 		if pair[0] == "name" || pair[0] == "path" {
@@ -291,6 +311,18 @@ func genericMeta(t *model.Table) *preset.MetaTable {
 			if !ok {
 				continue
 			}
+		}
+		return &preset.MetaTable{Key: k.Name, Value: v.Name}
+	}
+	for _, k := range t.Columns {
+		lower := strings.ToLower(k.Name)
+		if !strings.HasSuffix(lower, "_key") || !textKey(k) {
+			continue
+		}
+		base := k.Name[:len(k.Name)-len("_key")]
+		v := t.Column(base + "_value")
+		if v == nil || !sample.Sampleable(v) || strings.EqualFold(base, "session") || hinted(k, v) {
+			continue
 		}
 		return &preset.MetaTable{Key: k.Name, Value: v.Name}
 	}

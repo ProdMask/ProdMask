@@ -135,6 +135,25 @@ func TestMatchName(t *testing.T) {
 		{"subscribers", "address_id", "int", ""},
 		{"servers", "mac_address", "varchar", ""},
 		{"smtp", "smtp_password", "varchar", model.CatPasswordHash},
+		// Settings whose names say more than they hold.
+		{"wp_usermeta", "default_password_nag", "", ""},
+		{"wp_options", "woocommerce_registration_generate_password", "", ""},
+		{"wp_options", "woocommerce_myaccount_lost_password_endpoint", "", ""},
+		{"wp_options", "woocommerce_myaccount_edit_address_endpoint", "", ""},
+		{"wp_options", "woocommerce_email_background_color", "", ""},
+		{"rank_math_analytics_objects", "mobile_pagescore", "varchar", ""},
+		{"rank_math_analytics_objects", "mobile_interactive", "double", ""},
+		{"um_role", "_um_after_login", "", ""},
+		{"um_options", "login_align", "", ""},
+		{"um_options", "login_primary_btn_word", "", ""},
+		{"wp_options", "smtp_login", "", model.CatUsername},
+		{"wp_options", "smtp_login_2", "", model.CatUsername},
+		{"users", "generated_password", "varchar", model.CatPasswordHash},
+		// Notification recipients are email addresses.
+		{"wp_options", "fixture_admin_recipient", "", model.CatEmail},
+		{"settings", "recipients", "varchar", model.CatEmail},
+		{"orders", "recipient_name", "varchar", model.CatPersonName},
+		{"gifts", "recipient_message", "text", model.CatFreeText},
 	}
 	for _, c := range cases {
 		tc := tStr

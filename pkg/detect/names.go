@@ -21,6 +21,7 @@ type nameRule struct {
 	exclude  map[string]bool
 	tableCtx map[string]bool // for bare words: the table or parent key must suggest people
 	exact    bool            // the name must be exactly the alternative
+	last     bool            // the alternative must end the name
 	sev      model.Severity
 	note     string
 }
@@ -60,10 +61,13 @@ var nameRules = buildRules()
 
 func buildRules() []nameRule {
 	const timeWords = "at date time on expires expire expiry expired created updated changed modified sent"
+	const userExclude = "attempts " + timeWords + " failed last ip type url id method provider token key redirect " +
+		"page form history after before"
 	rules := []nameRule{
 		rule(model.CatPasswordHash, tStr|tBin,
 			"password|passwords|user pass|pass hash|hashed pass|password hash|encrypted password|pass word",
-			"reset token changed change "+timeWords+" policy hint lifetime attempts failures failure strength algo algorithm requested"),
+			"reset token changed change "+timeWords+" policy hint lifetime attempts failures failure strength algo algorithm requested "+
+				"nag generate endpoint lost"),
 		rule(model.CatSecret, tStr|tBin|tJSON,
 			"secret|secrets|api key|access key|secret key|private key|client secret|consumer secret|consumer key|"+
 				"auth key|access token|refresh token|auth token|remember token|reset token|rp token|activation key|"+
@@ -92,11 +96,13 @@ func buildRules() []nameRule {
 			"sent send verified verify verification confirmed confirm status type subject body content setting "+
 				"settings opt optin notify notification notifications domain valid invalid bounced bounce unsubscribed "+
 				"subscribed sync synced "+timeWords+" id ids hash hashed token queue log error errors attempts "+
-				"frequency preference preferences consent agreed accepted marketing"),
+				"frequency preference preferences consent agreed accepted marketing color colour background image header footer "+
+				"heading text"),
 		rule(model.CatPhone, tStr|tBigInt|tNum,
 			"phone|phones|telephone|tel|mobile|fax|msisdn|cell phone|phone number|mobile number|whatsapp|sms number",
 			"verified verify verification confirmed type code country prefix ext extension "+timeWords+
-				" status notification notifications consent theme app device os version model brand optin opt template"),
+				" status notification notifications consent theme app device os version model brand optin opt template "+
+				"score scores pagescore interactive speed pagespeed menu breakpoint layout width height"),
 		rule(model.CatIPAddress, tStr|tInt|tBin|tInet,
 			"ip|ip address|ipv4|ipv6|remote addr|remote ip|client ip|x forwarded for|forwarded for|real ip",
 			"country city region location geo whitelist allowlist blacklist blocklist range ranges version type "+
@@ -129,7 +135,7 @@ func buildRules() []nameRule {
 			"address|addresses|street|addr|address line|street address|house number|apartment|apt",
 			"ip mac email mail wallet contract id ids type types book verified validation valid same default hash "+
 				"bitcoin eth url web host server bind listen proxy forwarded remote node peer memory pointer offset "+
-				"register"),
+				"register endpoint"),
 		func() nameRule {
 			// line1 and line2 are address lines only inside an address.
 			r := rule(model.CatAddress, tStr, "line 1|line 2|line 3", "id ids type item items")
@@ -163,8 +169,14 @@ func buildRules() []nameRule {
 			return r
 		}(),
 		rule(model.CatUsername, tStr,
-			"user name|user login|login name|nice name|login|account name",
-			"attempts "+timeWords+" failed last ip type url id method provider token key redirect page form history"),
+			"user name|user login|login name|nice name|account name", userExclude),
+		func() nameRule {
+			// A bare "login" is a username only at the end, as in
+			// smtp_login; login_align and login_btn_word set up a form.
+			r := rule(model.CatUsername, tStr, "login", userExclude)
+			r.last = true
+			return r
+		}(),
 		rule(model.CatGender, tStr|tSmallInt|tEnum, "gender|sex", "options list"),
 		rule(model.CatCompany, tStr,
 			"company|company name|organisation|organization|employer|business name|org name",
@@ -176,6 +188,8 @@ func buildRules() []nameRule {
 			"comment|comments|customer note|note|notes|message|messages|remarks|feedback|review text|review|"+
 				"inquiry|enquiry|bio|biography|about me",
 			"id ids type status "+timeWords+" notify notification approved parent karma subject"),
+		// Last, so "recipient name" stays a name and "recipient message" free text.
+		rule(model.CatEmail, tStr, "recipient|recipients", "name names type types id ids count role roles"),
 	}
 	return rules
 }
@@ -187,6 +201,15 @@ func (r *nameRule) match(tokens []string) []string {
 	for _, alt := range r.alts {
 		if r.exact && len(alt) != len(tokens) {
 			continue
+		}
+		if r.last {
+			end := len(tokens)
+			for end > 0 && isDigits(tokens[end-1]) {
+				end-- // smtp_login_2 still ends in login
+			}
+			if len(alt) > end || !hasSeq(tokens[end-len(alt):end], alt) {
+				continue
+			}
 		}
 		if len(alt) > len(best) && hasSeq(tokens, alt) {
 			best = alt

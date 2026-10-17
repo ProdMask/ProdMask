@@ -74,11 +74,12 @@ func TestWalkJSONTruncatedAndKeys(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	want := []string{"customers.*", "customers.*.name", "customers[].note"}
+	// The email key itself is reported at {}, the value under it at *.
+	want := []string{"customers.*.name", "customers[].note", "customers{}"}
 	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("paths = %v, want %v", keys, want)
 	}
-	if got["customers.*"] != "jane@fixture.gr" {
+	if got["customers{}"] != "jane@fixture.gr" {
 		t.Errorf("email key not reported as a value: %v", got)
 	}
 }

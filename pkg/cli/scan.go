@@ -36,7 +36,7 @@ func runScan(ctx context.Context, env *Env, args []string) int {
 	fs.SetOutput(stderr)
 	dsn := fs.String("dsn", "", "connection string, mysql://user@host:3306/db or user@tcp(host:3306)/db\n(default $PRODMASK_DSN; the password may come from $PRODMASK_PASSWORD)")
 	sampleRows := fs.Int("sample-rows", scan.DefaultSampleRows, "rows to sample per table")
-	metaRows := fs.Int("meta-sample-rows", scan.DefaultMetaSampleRows, "rows to sample per key/value table such as wp_postmeta")
+	metaRows := fs.Int("meta-sample-rows", scan.DefaultMetaSampleRows, "rows to sample from a key/value table such as wp_postmeta\nthat is too big to read whole")
 	noSamples := fs.Bool("no-samples", false, "judge column names only and read no rows")
 	format := fs.String("format", "text", "report format: text, markdown or json")
 	out := fs.String("out", "", "write the report to this file instead of standard output")

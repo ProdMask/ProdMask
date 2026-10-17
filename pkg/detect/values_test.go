@@ -136,6 +136,7 @@ func TestFindSecrets(t *testing.T) {
 	aws := "AKIA" + "IOSFODNN7EXAMPLE"
 	jwt := "eyJ" + "hbGciOiJIUzI1NiJ9" + ".eyJ" + "zdWIiOiIxMjM0NTY3ODkwIn0" + "." + strings.Repeat("sig_", 5)
 	ant := "sk-" + "ant-api03-" + strings.Repeat("Ab9_", 10)
+	google := "AI" + "za" + strings.Repeat("Bx3_", 8) + "Bx3"
 
 	cases := []struct {
 		in   string
@@ -147,6 +148,7 @@ func TestFindSecrets(t *testing.T) {
 		{"aws " + aws + " here", "AWS access key ID", "live"},
 		{jwt, "JSON Web Token", ""},
 		{ant, "Anthropic API key", "live"},
+		{google, "Google API key", "live"},
 	}
 	for _, c := range cases {
 		hits := FindSecrets(c.in)
@@ -156,5 +158,32 @@ func TestFindSecrets(t *testing.T) {
 	}
 	if hits := FindSecrets("plain text with sk_ and AKIA mentioned"); len(hits) != 0 {
 		t.Errorf("false positives: %+v", hits)
+	}
+}
+
+func TestEmailList(t *testing.T) {
+	for _, s := range []string{"staff@mail.fixture.gr, owner@mail.fixture.gr", "a@mail.fixture.gr;b@mail.fixture.gr", "a@mail.fixture.gr b@mail.fixture.gr",
+		"a@mail.fixture.gr\x0ab@mail.fixture.gr"} {
+		if len(emailList(s)) != 2 {
+			t.Errorf("emailList(%q) = %v", s, emailList(s))
+		}
+	}
+	for _, s := range []string{"staff@mail.fixture.gr", "staff@mail.fixture.gr, not an address", "[_site_admin_email]"} {
+		if emailList(s) != nil {
+			t.Errorf("emailList(%q) = %v, want nil", s, emailList(s))
+		}
+	}
+}
+
+func TestLocalIP(t *testing.T) {
+	for _, s := range []string{"127.0.0.1", "::1", "0.0.0.0", "127.0.0.1, ::1"} {
+		if !localIP(s) {
+			t.Errorf("localIP(%q) = false", s)
+		}
+	}
+	for _, s := range []string{"192.0.2.10", "127.0.0.1, 192.0.2.10", "2001:db8::1"} {
+		if localIP(s) {
+			t.Errorf("localIP(%q) = true", s)
+		}
 	}
 }

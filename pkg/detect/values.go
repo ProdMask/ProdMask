@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var (
@@ -50,6 +51,51 @@ func reservedEmail(s string) bool {
 		}
 	}
 	return false
+}
+
+// HasEmail reports whether a value is, or contains, an email address. It
+// is for reading settings; callers must never print the value.
+func HasEmail(s string) bool {
+	return IsEmail(strings.TrimSpace(s)) || containsEmail(s)
+}
+
+var reListSep = regexp.MustCompile(`[,;\s]+`)
+
+// isListSep reports whether r can separate the addresses of a list.
+func isListSep(r rune) bool { return r == ',' || r == ';' || unicode.IsSpace(r) }
+
+// emailList returns the addresses of a value made of two or more email
+// addresses separated by commas, semicolons, spaces or line breaks, or nil.
+func emailList(s string) []string {
+	if len(s) > 2048 || !strings.Contains(s, "@") || !strings.ContainsFunc(s, isListSep) {
+		return nil
+	}
+	var out []string
+	for _, part := range reListSep.Split(s, -1) {
+		if part == "" {
+			continue
+		}
+		if !IsEmail(part) {
+			return nil
+		}
+		out = append(out, part)
+	}
+	if len(out) < 2 {
+		return nil
+	}
+	return out
+}
+
+// localIP reports whether an address, or every address of a list, is a
+// loopback or unspecified address, which never identifies anyone.
+func localIP(s string) bool {
+	for _, p := range strings.Split(s, ",") {
+		a, err := netip.ParseAddr(strings.TrimSpace(p))
+		if err != nil || !(a.IsLoopback() || a.IsUnspecified()) {
+			return false
+		}
+	}
+	return true
 }
 
 func containsEmail(s string) bool {

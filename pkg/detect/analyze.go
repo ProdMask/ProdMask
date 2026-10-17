@@ -18,6 +18,11 @@ type Hint struct {
 	Note     string
 	Source   string // e.g. "preset:woocommerce"
 	Ignore   bool   // known not to hold personal data
+	// Delete marks a cache the platform rebuilds, such as WordPress
+	// transients: a copy should delete these rows whatever they hold. A
+	// hint with Delete and no Category doesn't say what the data is, so
+	// the subject is judged as if there were no hint.
+	Delete bool
 }
 
 // Subject is one column, or one key of a key/value table, to judge.
@@ -30,6 +35,16 @@ type Subject struct {
 	Context  []string // words of the table name
 	Hint     *Hint
 	Sampled  bool // false when values were not read (--no-samples)
+
+	Keys        int    // keys a pattern stands for, copied to the findings
+	KeysPartial bool   // Keys is a lower bound
+	Where       string // the subject is these rows only, copied to the findings
+	// Setting marks a key of a settings table, which holds one value; an
+	// empty value then means nothing is stored.
+	Setting bool
+	// Skipped marks a key left without values by a sampling limit; name
+	// matches on it stay weak.
+	Skipped bool
 }
 
 // maxPathFindings caps the findings reported for paths inside one column.
@@ -41,6 +56,11 @@ func Analyze(sub Subject, p *Profile) []model.Finding {
 	if sub.Hint != nil && sub.Hint.Ignore {
 		return nil
 	}
+	// Only a hint with a category says what the data is.
+	hint := sub.Hint
+	if hint != nil && hint.Category == "" {
+		hint = nil
+	}
 	tc := tStr
 	if sub.DataType != "" {
 		tc = classOf(sub.DataType)
@@ -48,19 +68,21 @@ func Analyze(sub Subject, p *Profile) []model.Finding {
 	tokens := Tokens(sub.Name)
 	var nm *NameMatch
 	source := "name"
-	if h := sub.Hint; h != nil && h.Category != "" {
-		nm = &NameMatch{Category: h.Category, Severity: h.Severity, Note: h.Note}
-		source = h.Source
+	if hint != nil {
+		nm = &NameMatch{Category: hint.Category, Severity: hint.Severity, Note: hint.Note}
+		source = hint.Source
 	} else {
 		nm = MatchName(tokens, sub.Context, tc)
 	}
-	base := model.Finding{Table: sub.Table, Column: sub.Column, MetaKey: sub.MetaKey}
-	out := judge(base, nm, source, tokens, p, sub.Sampled, sub.Hint)
+	base := model.Finding{Table: sub.Table, Column: sub.Column, MetaKey: sub.MetaKey,
+		Keys: sub.Keys, KeysPartial: sub.KeysPartial, Where: sub.Where}
+	st := state{sampled: sub.Sampled, setting: sub.Setting, skipped: sub.Skipped}
+	out := judge(base, nm, source, tokens, p, st, hint)
 	if p != nil && len(p.Paths) > 0 {
 		paths := judgePaths(base, sub.Context, p)
 		// When the values are mostly JSON or serialized data, the paths
 		// say more than the column name; keep only what a preset knows.
-		if len(paths) > 0 && sub.Hint == nil && p.Structured*2 >= p.NonEmpty {
+		if len(paths) > 0 && hint == nil && p.Structured*2 >= p.NonEmpty {
 			kept := out[:0]
 			for _, f := range out {
 				if f.Source != "name" {
@@ -71,7 +93,65 @@ func Analyze(sub Subject, p *Profile) []model.Finding {
 		}
 		out = append(out, paths...)
 	}
+	if sub.Hint != nil && sub.Hint.Delete {
+		out = deleteFinding(out, sub.Hint)
+	}
 	return out
+}
+
+// deleteFinding folds the findings of a cache into one that suggests
+// deleting it: the worst of them, with the other kinds of data it holds in
+// its reasons, and no paths, since the rows go away.
+func deleteFinding(fs []model.Finding, h *Hint) []model.Finding {
+	if len(fs) == 0 {
+		return nil
+	}
+	worst := 0
+	for i, f := range fs {
+		if better(f, fs[worst]) {
+			worst = i
+		}
+	}
+	f := fs[worst]
+	var also []string
+	seen := map[model.Category]bool{f.Category: true}
+	for _, g := range fs {
+		if g.Confidence > model.ConfidenceLow && !seen[g.Category] {
+			seen[g.Category] = true
+			also = append(also, g.Category.Label())
+		}
+	}
+	sort.Strings(also)
+	f.Reasons = append([]string(nil), f.Reasons...)
+	if f.Path != "" && len(f.Reasons) > 0 {
+		// The finding now stands for the whole key: say where its reasons apply.
+		f.Reasons[0] = f.Path + ": " + f.Reasons[0]
+	}
+	if len(also) > 0 {
+		f.Reasons = append(f.Reasons, "also holds: "+strings.Join(also, ", "))
+	}
+	f.Path, f.Mask, f.RowMasks = "", "delete", nil
+	f.Note = appendNote(f.Note, h.Note)
+	return []model.Finding{f}
+}
+
+// better reports whether finding a is worth more attention than b: a
+// confident one over a weak one, then the more severe, then the surer.
+func better(a, b model.Finding) bool {
+	if (a.Confidence == model.ConfidenceLow) != (b.Confidence == model.ConfidenceLow) {
+		return b.Confidence == model.ConfidenceLow
+	}
+	if a.Severity != b.Severity {
+		return a.Severity > b.Severity
+	}
+	return a.Confidence > b.Confidence
+}
+
+// state is what judge needs to know about how the values were read.
+type state struct {
+	sampled bool // values were read
+	setting bool // a single-value setting
+	skipped bool // values were left unread by a sampling limit
 }
 
 // Categories judged by name alone that numbers or code identifiers cannot be.
@@ -148,7 +228,25 @@ var valueChecks = []valueCheck{
 	{model.CatPaymentToken, func(p *Profile) int { return p.PaymentID }, 0.5, 2, "payment provider IDs"},
 }
 
-func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p *Profile, sampled bool, hint *Hint) []model.Finding {
+// oneValue lists the categories for which one matching value is enough
+// when every sampled value matches: settings hold a single value, and
+// these formats can't be mistaken for anything else.
+var oneValue = map[model.Category]bool{model.CatEmail: true, model.CatPasswordHash: true, model.CatPaymentToken: true}
+
+// flagOK lists the categories whose values may legitimately be on/off flags.
+var flagOK = map[model.Category]bool{model.CatGender: true, model.CatCountry: true, model.CatRegion: true, model.CatCardMeta: true}
+
+// needsDigits gives, for categories whose values always contain digits,
+// how many at least one value must hold: an ID or account number, or a
+// birth date or year, has four or more; a postcode may have one (SW1A 1AA).
+var needsDigits = map[model.Category]int{model.CatNationalID: 4, model.CatBankAccount: 4,
+	model.CatDateOfBirth: 4, model.CatPostcode: 1}
+
+// identity lists name and login categories: email-shaped values there
+// mean the column holds email addresses too.
+var identity = map[model.Category]bool{model.CatUsername: true, model.CatPersonName: true}
+
+func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p *Profile, st state, hint *Hint) []model.Finding {
 	var out []model.Finding
 	named := -1
 
@@ -172,15 +270,21 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		}
 		label := nm.Category.Label()
 		switch {
-		case nm.Category == model.CatFreeText && sampled && (p == nil || p.NonEmpty == 0):
+		case nm.Category == model.CatFreeText && st.sampled && (p == nil || p.NonEmpty == 0):
 			f.Confidence = model.ConfidenceLow
 			f.Note = appendNote(f.Note, "no non-empty values in the sample")
-		case !sampled:
+		case !st.sampled && st.skipped:
+			f.Confidence = model.ConfidenceLow
+			f.Note = appendNote(f.Note, "not sampled: over the per-table limit")
+		case !st.sampled:
 			f.Confidence = model.ConfidenceMedium
 			f.Reasons = append(f.Reasons, "values not sampled")
 		case p == nil || p.NonEmpty == 0:
 			f.Confidence = model.ConfidenceMedium
 			f.Note = appendNote(f.Note, "no non-empty values in the sample")
+			if st.setting && p != nil && p.Values > 0 {
+				f.Confidence = model.ConfidenceLow // an empty setting stores nothing, whatever a preset says
+			}
 		default:
 			f.Sampled = p.NonEmpty
 			m, checkable := support(nm, p)
@@ -209,15 +313,22 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 				f.Confidence = model.ConfidenceHigh
 			} else {
 				f.Confidence = model.ConfidenceMedium
-				if textual[nm.Category] {
-					switch {
-					case p.Numeric == p.NonEmpty:
-						f.Confidence = model.ConfidenceLow
-						f.Note = appendNote(f.Note, "sampled values are all numbers")
-					case ratio(p.CodeLike, p.NonEmpty) >= 0.5:
-						f.Confidence = model.ConfidenceLow
-						f.Note = appendNote(f.Note, "sampled values look like code identifiers")
-					}
+				switch {
+				case !flagOK[nm.Category] && p.Flag == p.NonEmpty:
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values are all on/off flags")
+				case textual[nm.Category] && p.Numeric == p.NonEmpty:
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values are all numbers")
+				case textual[nm.Category] && ratio(p.CodeLike, p.NonEmpty) >= 0.5:
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values look like code identifiers")
+				case labelLike(nm.Category, p):
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values look like field names, placeholders or flags")
+				case needsDigits[nm.Category] > 0 && p.leafMaxDigits() < needsDigits[nm.Category]:
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values have too few digits for a "+label)
 				}
 			}
 		}
@@ -226,9 +337,11 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 	}
 
 	if p == nil || p.NonEmpty == 0 {
-		return out
+		return lowIsLow(out)
 	}
 
+	keysLeaf := strings.HasSuffix(base.Path, keysPath)
+	ident := named >= 0 && identity[out[named].Category]
 	for _, c := range valueChecks {
 		n := c.n(p)
 		if named >= 0 && out[named].Category == c.cat {
@@ -239,7 +352,17 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			continue
 		}
 		r := ratio(n, p.NonEmpty)
-		if n < c.minN || r < c.min {
+		all := n > 0 && n == p.NonEmpty
+		minRatio, minN := c.min, c.minN
+		identEmail := c.cat == model.CatEmail && ident
+		if identEmail {
+			minRatio, minN = 0.05, 2 // logins and names typed as email addresses
+		}
+		// Every value matches, and there may be only one: settings, and
+		// the keys of a map keyed by IP (version numbers parse as IPv4,
+		// so IPs get this only there).
+		one := all && (oneValue[c.cat] || (c.cat == model.CatIPAddress && keysLeaf) || identEmail)
+		if !one && (n < minN || r < minRatio) {
 			continue
 		}
 		f := base
@@ -249,12 +372,22 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		f.Source = "value"
 		f.Sampled, f.Matched = p.NonEmpty, n
 		f.Confidence = model.ConfidenceMedium
-		if r >= 0.8 {
+		if r >= 0.8 && n >= c.minN {
 			f.Confidence = model.ConfidenceHigh
 		}
 		f.Reasons = []string{fmt.Sprintf("%d of %d sampled values look like %s", n, p.NonEmpty, c.what)}
 		if c.cat == model.CatPaymentToken {
 			f.Severity = model.SeverityMedium
+		}
+		if identEmail {
+			f.Confidence = model.ConfidenceMedium
+			if r >= 0.5 {
+				f.Confidence = model.ConfidenceHigh
+			} else {
+				// A mixed column keeps its own mask; most values aren't addresses.
+				f.Mask = out[named].Mask
+				f.Note = fmt.Sprintf("%d of %d values are email addresses; keep them email-shaped when masking", n, p.NonEmpty)
+			}
 		}
 		out = append(out, f)
 	}
@@ -360,7 +493,41 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		out[named].Confidence = model.ConfidenceLow
 		out[named].Note = appendNote(out[named].Note, "no personal data spotted in the sampled text")
 	}
-	return out
+	return lowIsLow(out)
+}
+
+// labelLike reports whether sampled values name fields rather than hold
+// data: the field's own name, placeholders and field names, making up at
+// least half of the values, or all of them together with on/off flags, as
+// in an import plugin's column mappings. Usernames, profile handles and
+// secrets can be words joined by _ or - (jane-doe-1a2b3c,
+// correct-horse-battery-staple), so for those field names don't count.
+func labelLike(cat model.Category, p *Profile) bool {
+	names := p.Echo + p.Placeholder
+	switch cat {
+	case model.CatUsername, model.CatWebsite, model.CatSecret:
+	default:
+		names += p.FieldName
+	}
+	if names == 0 {
+		return false
+	}
+	flags := 0
+	if !flagOK[cat] {
+		flags = p.Flag
+	}
+	return ratio(names, p.NonEmpty) >= 0.5 || names+flags == p.NonEmpty
+}
+
+// lowIsLow gives weak findings low severity: a name match whose values
+// don't fit says little about how much harm the data could do.
+func lowIsLow(fs []model.Finding) []model.Finding {
+	for i := range fs {
+		if fs[i].Confidence == model.ConfidenceLow {
+			fs[i].Severity = model.SeverityLow
+		}
+	}
+	return fs
 }
 
 // refine adjusts a finding using details of the values: test card numbers,
@@ -411,13 +578,7 @@ func judgePaths(base model.Finding, ctx []string, p *Profile) []model.Finding {
 			continue
 		}
 		keys := p.pathKeys[name]
-		last := -1
-		for i := len(keys) - 1; i >= 0; i-- {
-			if keys[i] != "[]" && keys[i] != "*" {
-				last = i
-				break
-			}
-		}
+		last := lastName(keys)
 		var (
 			nm     *NameMatch
 			tokens []string
@@ -432,7 +593,7 @@ func judgePaths(base model.Finding, ctx []string, p *Profile) []model.Finding {
 		}
 		b := base
 		b.Path = name
-		for _, f := range judge(b, nm, "name", tokens, sub, true, nil) {
+		for _, f := range judge(b, nm, "name", tokens, sub, state{sampled: true}, nil) {
 			if f.Confidence > model.ConfidenceLow {
 				out = append(out, f)
 			}
@@ -475,6 +636,9 @@ func SortFindings(fs []model.Finding) {
 		}
 		if a.Path != b.Path {
 			return a.Path < b.Path
+		}
+		if a.Where != b.Where {
+			return a.Where < b.Where
 		}
 		return a.Category < b.Category
 	})

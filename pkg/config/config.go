@@ -32,6 +32,7 @@ type rule struct {
 
 type field struct {
 	rule  *rule
+	name  *rule // rewrites the part of a key's name that holds data
 	paths map[string]*rule
 	rows  []rowRule
 }
@@ -60,6 +61,19 @@ func better(a, b model.Finding) bool {
 	return a.Confidence > b.Confidence
 }
 
+// Header lines that say how to read the config.
+var header = []string{
+	"It is a starting point, not a guarantee: review every rule, and rescan after schema changes.",
+	"Lines starting with \"# \" inside a table are weak matches; uncomment the ones that are real.",
+	"In keys and in path segments alike, * stands for one or more characters that vary, such as a user ID.",
+	"A path segment that is exactly * stands for the keys at that level that aren't plain names (hashes, labels",
+	"with spaces, data); plain-named keys beside them keep their own rules. Stored keys never contain *.",
+	"An exact key wins over a pattern, more fixed characters win over fewer, and on a tie the first one here wins.",
+	"In paths, [] stands for each item of a list or numeric key of a map (such as a timestamp), and {} (always",
+	"last) for the keys of a map whose keys are data, such as email or IP addresses.",
+	"name: rewrites the part of a key's name that holds personal data; mask: masks its value.",
+}
+
 // Write renders the starter config for a scan result.
 func Write(w io.Writer, res *model.Result) error {
 	tables := map[string]*tableConf{}
@@ -78,8 +92,8 @@ func Write(w io.Writer, res *model.Result) error {
 		}
 	}
 
-	// Pick one finding per column, key or path: the most severe of the
-	// confident ones.
+	// Pick one finding per column, key, path, row condition and key name:
+	// the most severe of the confident ones.
 	best := map[string]model.Finding{}
 	others := map[string][]string{}
 	rowMasks := map[string][]model.RowMask{}
@@ -88,7 +102,7 @@ func Write(w io.Writer, res *model.Result) error {
 		if f.MetaKey == "(key hidden)" {
 			continue
 		}
-		k := f.Table + "\x00" + f.Column + "\x00" + f.MetaKey + "\x00" + f.Path
+		k := f.Table + "\x00" + f.Column + "\x00" + f.MetaKey + "\x00" + f.Path + "\x00" + f.Where + "\x00" + fmt.Sprint(f.KeyName)
 		for _, rm := range f.RowMasks {
 			if !slices.Contains(rowMasks[k], rm) {
 				rowMasks[k] = append(rowMasks[k], rm)
@@ -111,39 +125,69 @@ func Write(w io.Writer, res *model.Result) error {
 		f := best[k]
 		r := &rule{mask: f.Mask, low: f.Confidence == model.ConfidenceLow}
 		r.comment = f.Category.Label() + ", " + f.Confidence.String() + " confidence"
+		if f.KeyName {
+			r.comment = f.Category.Label() + " in the key name, " + f.Confidence.String() + " confidence"
+		}
 		if extra := others[k]; len(extra) > 0 {
 			r.comment += "; also " + strings.Join(extra, ", ")
+		}
+		if f.Keys > 0 {
+			r.comment += "; " + f.KeyCount()
 		}
 		if f.Note != "" {
 			r.comment += "; " + f.Note
 		}
 		t := get(f.Table)
 		var fd *field
-		if f.MetaKey != "" {
+		switch {
+		case f.KeyName:
+			fd = t.keys[f.MetaKey]
+			if fd == nil {
+				fd = &field{paths: map[string]*rule{}}
+				t.keys[f.MetaKey] = fd
+			}
+			fd.name = r
+			continue
+		case f.MetaKey != "":
 			t.valCol = f.Column
 			fd = t.keys[f.MetaKey]
 			if fd == nil {
 				fd = &field{paths: map[string]*rule{}}
 				t.keys[f.MetaKey] = fd
 			}
-		} else {
+		default:
 			fd = t.columns[f.Column]
 			if fd == nil {
 				fd = &field{paths: map[string]*rule{}}
 				t.columns[f.Column] = fd
 			}
 		}
+		if f.Where != "" {
+			// A finding about some rows only: it never sets the field's own mask.
+			fd.rows = append(fd.rows, rowRule{where: f.Where, rule: r})
+			continue
+		}
 		if f.Path != "" {
 			fd.paths[f.Path] = r
 			continue
 		}
 		fd.rule = r
-		rms := rowMasks[k]
-		slices.SortFunc(rms, func(a, b model.RowMask) int {
-			return cmp.Or(strings.Compare(a.Where, b.Where), strings.Compare(a.Mask, b.Mask), strings.Compare(a.Note, b.Note))
-		})
-		for _, rm := range rms {
+		for _, rm := range rowMasks[k] {
 			fd.rows = append(fd.rows, rowRule{where: rm.Where, rule: &rule{mask: rm.Mask, comment: rm.Note, low: r.low}})
+		}
+	}
+	for _, t := range tables {
+		for _, fd := range t.keys {
+			// Renaming rows the copy deletes is pointless.
+			if fd.rule != nil && fd.rule.mask == "delete" {
+				fd.name = nil
+			}
+		}
+		for _, fd := range t.columns {
+			sortRows(fd.rows)
+		}
+		for _, fd := range t.keys {
+			sortRows(fd.rows)
 		}
 	}
 	for _, ts := range res.Tables {
@@ -157,8 +201,9 @@ func Write(w io.Writer, res *model.Result) error {
 	pf("# prodmask starter config\n")
 	pf("# Written by prodmask %s on %s from a scan of %s (%s %s).\n", res.Version,
 		res.GeneratedAt.Format("2006-01-02"), res.Database, res.Server.Flavor, res.Server.Version)
-	pf("# It is a starting point, not a guarantee: review every rule, and rescan after schema changes.\n")
-	pf("# Lines starting with \"# \" inside a table are weak matches; uncomment the ones that are real.\n")
+	for _, line := range header {
+		pf("# %s\n", line)
+	}
 	pf("# Masking strategies: %s\n", strings.Join(Strategies, ", "))
 	pf("version: 1\n")
 	pf("database: %s\n", scalar(res.Database))
@@ -244,6 +289,13 @@ func Write(w io.Writer, res *model.Result) error {
 	return b.Flush()
 }
 
+func sortRows(rows []rowRule) {
+	slices.SortFunc(rows, func(a, b rowRule) int {
+		return cmp.Or(strings.Compare(a.where, b.where), strings.Compare(a.rule.mask, b.rule.mask),
+			strings.Compare(a.rule.comment, b.rule.comment))
+	})
+}
+
 func writeFields(b *bufio.Writer, indent string, fields map[string]*field) {
 	names := make([]string, 0, len(fields))
 	for n := range fields {
@@ -252,16 +304,21 @@ func writeFields(b *bufio.Writer, indent string, fields map[string]*field) {
 	sort.Strings(names)
 	for _, n := range names {
 		fd := fields[n]
-		if len(fd.paths) == 0 && len(fd.rows) == 0 {
-			writeRule(b, indent, n, fd.rule)
+		if len(fd.paths) == 0 && len(fd.rows) == 0 && fd.name == nil {
+			if fd.rule != nil {
+				writeRule(b, indent, n, fd.rule)
+			}
 			continue
 		}
 		weakRows := !slices.ContainsFunc(fd.rows, func(rr rowRule) bool { return !rr.rule.low })
 		name := indent
-		if len(fd.paths) == 0 && (fd.rule == nil || fd.rule.low) && weakRows {
+		if len(fd.paths) == 0 && (fd.rule == nil || fd.rule.low) && (fd.name == nil || fd.name.low) && weakRows {
 			name += "# " // nothing confident inside, so no live key either
 		}
 		fmt.Fprintf(b, "%s%s:\n", name, scalar(n))
+		if fd.name != nil {
+			writeRule(b, indent+"  ", "name", fd.name)
+		}
 		if fd.rule != nil {
 			writeRule(b, indent+"  ", "mask", fd.rule)
 		}
@@ -281,7 +338,11 @@ func writeFields(b *bufio.Writer, indent string, fields map[string]*field) {
 			if weakRows {
 				header += "# " // all weak: don't leave an empty rows: key behind
 			}
-			fmt.Fprintf(b, "%srows:  # for the rows that match, these replace the mask above\n", header)
+			note := "for the rows that match, these replace the mask above"
+			if fd.rule == nil {
+				note = "for the rows that match; the other rows keep their values"
+			}
+			fmt.Fprintf(b, "%srows:  # %s\n", header, note)
 			for _, rr := range fd.rows {
 				prefix := indent + "    "
 				if rr.rule.low {

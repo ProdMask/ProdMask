@@ -325,3 +325,36 @@ CREATE TABLE wp_actionscheduler_logs (
   PRIMARY KEY (log_id),
   KEY action_id (action_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+-- WooCommerce admin notes are named by slug, such as wc-admin-new-sales-record.
+CREATE TABLE wp_wc_admin_notes (
+  note_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  name varchar(255) NOT NULL,
+  type varchar(20) NOT NULL,
+  locale varchar(20) NOT NULL,
+  title longtext NOT NULL,
+  status varchar(200) NOT NULL,
+  date_created datetime NOT NULL DEFAULT '1000-01-01 00:00:00',
+  PRIMARY KEY (note_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+-- An import/export plugin's saved column mappings: field names, not data.
+CREATE TABLE wp_wt_iew_mapping_template (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  template_type varchar(255) NOT NULL,
+  item_type varchar(255) NOT NULL,
+  name varchar(255) NOT NULL,
+  data longtext NOT NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+-- Ultimate Member's copy of member fields, as um_key/um_value pairs.
+CREATE TABLE wp_um_metadata (
+  umeta_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  um_key varchar(255) DEFAULT NULL,
+  um_value longtext,
+  PRIMARY KEY (umeta_id),
+  KEY user_id_indx (user_id),
+  KEY meta_key_indx (um_key(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;

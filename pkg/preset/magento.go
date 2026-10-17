@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/detect"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/sample"
@@ -59,11 +60,11 @@ func (e *env) magento() bool {
 	e.column(p+"oauth_token", "verifier", hint(mg, model.CatSecret, ""))
 	e.column(p+"vault_payment_token", "gateway_token", hint(mg, model.CatPaymentToken, "saved card at the payment gateway"))
 
-	e.meta(p+"core_config_data", &MetaTable{Key: "path", Value: "value", Platform: mg, HintFor: magentoConfigHint})
+	e.meta(p+"core_config_data", &MetaTable{Key: "path", Value: "value", Platform: mg, HintFor: magentoConfigHint, Primary: true})
 	labels := e.eavLabels(p)
 	for _, entity := range []string{"customer_entity", "customer_address_entity"} {
 		for _, typ := range []string{"varchar", "int", "text", "datetime", "decimal"} {
-			e.meta(p+entity+"_"+typ, &MetaTable{Key: "attribute_id", Value: "value", Platform: mg, Label: labels})
+			e.meta(p+entity+"_"+typ, &MetaTable{Key: "attribute_id", Value: "value", Platform: mg, Label: labels, Primary: true})
 		}
 	}
 
@@ -126,7 +127,7 @@ func (e *env) eavLabels(p string) func(string) string {
 			sample.QuoteIdent(types) + " t ON t.entity_type_id = a.entity_type_id " +
 			"WHERE t.entity_type_code IN ('customer', 'customer_address')")
 		if err != nil {
-			e.warn(fmt.Sprintf("could not read Magento attribute codes: %v", err))
+			e.warn(fmt.Sprintf("could not read Magento attribute codes: %s", dbconn.ErrorText(err)))
 		}
 		for _, r := range rows {
 			labels[r[0]] = Safe(r[1])
@@ -144,7 +145,7 @@ func (e *env) magentoPayments(p string) {
 	cfg := p + "core_config_data"
 	rows, err := e.rows("SELECT path, value FROM " + sample.QuoteIdent(cfg) + " WHERE path LIKE 'payment/%' LIMIT 5000")
 	if err != nil {
-		e.warn(fmt.Sprintf("could not read Magento payment settings: %v", err))
+		e.warn(fmt.Sprintf("could not read Magento payment settings: %s", dbconn.ErrorText(err)))
 		return
 	}
 	methods := map[string]map[string]string{}
@@ -173,8 +174,8 @@ func (e *env) magentoPayments(p string) {
 		}
 		if live, known := liveMode(kv); known && live {
 			e.sideEffect(model.SideEffect{
-				Platform: mg, Kind: "payments", Table: cfg, Item: "payment/" + Safe(m), Severity: model.SeverityHigh,
-				Summary: fmt.Sprintf("Payment method %q is active in live mode", Safe(m)),
+				Platform: mg, Kind: "payments", Table: cfg, Item: "payment/" + detect.ShowKey(m), Severity: model.SeverityHigh,
+				Summary: fmt.Sprintf("Payment method %q is active in live mode", detect.ShowKey(m)),
 				Fix:     "Switch it to sandbox or test mode and replace the live credentials in the copy",
 			})
 		}
@@ -195,7 +196,7 @@ func (e *env) magentoEmail(p string) {
 	if e.has(orders, "send_email", "email_sent") {
 		n, err := e.count("SELECT COUNT(*) FROM " + sample.QuoteIdent(orders) + " WHERE send_email = 1 AND email_sent IS NULL")
 		if err != nil {
-			e.warn(fmt.Sprintf("could not count queued order emails: %v", err))
+			e.warn(fmt.Sprintf("could not count queued order emails: %s", dbconn.ErrorText(err)))
 		} else if n > 0 {
 			e.sideEffect(model.SideEffect{
 				Platform: mg, Kind: "email", Table: orders, Severity: model.SeverityHigh, Count: n,
