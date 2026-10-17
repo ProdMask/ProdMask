@@ -23,10 +23,10 @@ Reports name tables, columns, keys and JSON paths, with counts and categories. T
 
 1. Download the archive for your system from the [releases page](https://github.com/ProdMask/ProdMask/releases). There are builds for Linux, macOS and Windows, each for amd64 and arm64.
 2. Download `checksums.txt` from the same release.
-3. Check the archive against it. On macOS, use `shasum -a 256 -c` instead of `sha256sum -c`:
+3. Check the archive against it, changing `linux_amd64` to match your archive. On macOS, use `shasum -a 256 -c` instead of `sha256sum -c`:
 
 ```bash
-grep prodmask_0.2.0_linux_amd64.tar.gz checksums.txt | sha256sum -c
+grep _linux_amd64.tar.gz checksums.txt | sha256sum -c
 ```
 
 4. Unpack the archive and put `prodmask` on your `PATH`.
