@@ -113,7 +113,8 @@ func TestFixtures(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			database := "prodmask_fixture_" + platform
-			if err := fixture.Build(ctx, admin, platform, database, fixture.Options{Canary: canary}); err != nil {
+			var planted fixture.Planted
+			if err := fixture.Build(ctx, admin, platform, database, fixture.Options{Canary: canary, Planted: &planted}); err != nil {
 				t.Fatalf("build fixture: %v", err)
 			}
 			sess := openScan(ctx, t, adminCfg, database)
@@ -133,6 +134,10 @@ func TestFixtures(t *testing.T) {
 				if strings.Contains(out, canary) {
 					t.Errorf("the %s output contains a sampled value", name)
 				}
+			}
+			checkPlanted(t, platform, &planted, outputs)
+			if platform == "generic" {
+				checkGenericSecrets(t, res)
 			}
 			checkConfigTables(t, outputs["yml"])
 			if dir := os.Getenv("PRODMASK_TEST_OUT"); dir != "" {

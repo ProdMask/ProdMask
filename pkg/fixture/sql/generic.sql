@@ -162,3 +162,45 @@ CREATE TABLE kv (
   value text,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Integrations: one credential per secret format the scanner knows by its
+-- shape, settings with credentials under paths, webhook columns, and
+-- look-alikes that must not count (a placeholder DSN, a field name, a slug
+-- and image data).
+CREATE TABLE integrations (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  service varchar(64) NOT NULL DEFAULT '',
+  credential text,
+  settings text,
+  discord_webhook varchar(255) DEFAULT NULL,
+  webhook_url varchar(255) DEFAULT NULL,
+  docs_url varchar(255) DEFAULT NULL,
+  plugin_option varchar(191) DEFAULT NULL,
+  post_name varchar(191) DEFAULT NULL,
+  photo mediumtext,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Logged API requests: Authorization headers as lines, print_r text and
+-- serialized arrays, keys in URLs, a log line with escaped JSON, and
+-- $_SERVER dumps with PHP_AUTH_PW.
+CREATE TABLE api_request_log (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  request_line varchar(255) DEFAULT NULL,
+  request_headers text,
+  headers text,
+  request_url varchar(512) DEFAULT NULL,
+  payload text,
+  server_vars text,
+  sample_header varchar(255) DEFAULT NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Push notification tokens of an app's devices.
+CREATE TABLE push_devices (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  app_name varchar(64) NOT NULL DEFAULT '',
+  registration_id varchar(255) DEFAULT NULL,
+  expo_token varchar(191) DEFAULT NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

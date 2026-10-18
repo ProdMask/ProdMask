@@ -5,9 +5,9 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
 `prodmask scan` connects read-only and samples a few hundred rows per table. It reports:
 
 - **Personal data and secrets:**
-  - emails, phone numbers, addresses, names, dates of birth, national and tax IDs, device and hardware IDs;
+  - emails, phone numbers, addresses, names, dates of birth, national and tax IDs, device and hardware IDs, push notification tokens;
   - IBANs, card numbers, password hashes, and passwords stored as plain text;
-  - API keys (Stripe, AWS, SendGrid, GitHub and more), including inside JSON and PHP-serialized values;
+  - API keys and tokens: Stripe, AWS, GitHub, Slack, Discord, Telegram, Google OAuth, Paddle, Postman and about 60 more formats, keys labelled `apikey`, and passwords inside URLs and `Authorization` headers, including inside JSON and PHP-serialized values;
   - email addresses inside URLs, and messages people send each other, such as private messages and notifications.
 - **What staging would do to real people:**
   - payment gateways in live mode;
@@ -59,7 +59,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |
-| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. Severities can rise between versions: v0.4.0 rates passwords stored as plain text critical |
+| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. Severities can rise between versions: v0.4.0 rates passwords stored as plain text critical. v0.5.0 adds critical findings for live keys in the new formats and for passwords in URLs and Basic headers, high ones for tokens whose mode can't be told and for `vendor_auth_code`, and medium ones for webhook names and test-mode keys; `sk-` findings on URL slugs go away |
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |

@@ -287,6 +287,26 @@ func TestMatchName(t *testing.T) {
 		{"message_folders", "title", "varchar", ""},
 		{"tickets", "title", "varchar", model.CatFreeText},
 		{"room_messages", "text", "text", model.CatFreeText},
+		// Webhook names, and Paddle Classic's and PHP's credentials, come
+		// after every other rule, so names those know keep their category.
+		{"integrations", "discord_webhook", "varchar", model.CatSecret},
+		{"integrations", "slack_webhook_url", "varchar", model.CatSecret},
+		{"integrations", "webhook_url", "varchar", model.CatSecret},
+		{"paddle_settings", "vendor_auth_code", "varchar", model.CatSecret},
+		{"integrations", "webhook_id", "varchar", ""},
+		{"integrations", "webhook_status", "varchar", ""},
+		{"integrations", "webhook_events", "varchar", ""},
+		{"integrations", "use_webhook", "varchar", ""},
+		{"integrations", "webhook_key", "varchar", ""},
+		{"orders", "auth_code", "varchar", ""},
+		{"payments", "transaction_auth_code", "varchar", ""},
+		{"paddle_settings", "vendor_auth_code_old", "varchar", ""},
+		{"integrations", "email_webhook", "varchar", model.CatEmail},
+		{"integrations", "phone_webhook", "varchar", model.CatPhone},
+		{"integrations", "company_webhook", "varchar", model.CatCompany},
+		{"integrations", "message_webhook", "varchar", model.CatFreeText},
+		{"integrations", "ip_webhook", "varchar", model.CatIPAddress},
+		{"integrations", "client_ip_hook_url", "varchar", model.CatIPAddress},
 	}
 	for _, c := range cases {
 		tc := tStr
@@ -313,6 +333,8 @@ func TestMatchNameInContext(t *testing.T) {
 		// WP Mail SMTP's smtp.pass and UpdraftPlus's FTP settings.
 		{"pass", "wp options wp mail smtp smtp", model.CatSecret},
 		{"pass", "wp options updraft ftp settings", model.CatSecret},
+		// PHP_AUTH_PW in a logged $_SERVER array.
+		{"PHP_AUTH_PW", "request logs server vars", model.CatSecret},
 		// POST data in an admin login log.
 		{"newpass", "admin login logs admin post details post", model.CatPasswordHash},
 		{"currentpass", "admin login logs admin post details post", model.CatPasswordHash},
@@ -367,5 +389,24 @@ func TestCVVSeverity(t *testing.T) {
 	m := MatchName(Tokens("cvv"), nil, tStr)
 	if m == nil || m.Severity != model.SeverityHigh || m.Note == "" {
 		t.Fatalf("cvv: got %+v, want high severity with a note", m)
+	}
+}
+
+// The last two rules: webhook names are medium, PHP_AUTH_PW is judged as a
+// password, and their words stay out of the rule words.
+func TestWebhookAndCredentialNames(t *testing.T) {
+	if m := MatchName(NameWords("discord_webhook"), Tokens("integrations"), tStr); m == nil || m.Severity != model.SeverityMedium || m.Password {
+		t.Errorf("discord_webhook: %+v", m)
+	}
+	if m := MatchName(NameWords("vendor_auth_code"), Tokens("paddle"), tStr); m == nil || m.Severity != model.SeverityNone || m.Password {
+		t.Errorf("vendor_auth_code: %+v", m)
+	}
+	if m := MatchName(NameWords("PHP_AUTH_PW"), Tokens("request logs"), tStr|tJSON); m == nil || !m.Password {
+		t.Errorf("PHP_AUTH_PW: %+v", m)
+	}
+	for _, w := range []string{"webhooks", "urls", "uri", "hook", "vendor", "pw"} {
+		if ruleWords[w] {
+			t.Errorf("%q joined the rule words", w)
+		}
 	}
 }

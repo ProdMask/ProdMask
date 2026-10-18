@@ -50,6 +50,8 @@ func TestGenericMetaShapes(t *testing.T) {
 		{"i18n", "app_i18n", []*model.Column{col("key", "varchar"), col("value", "text")}, "key", true, true},
 		{"language preferences are settings", "user_language_preferences",
 			[]*model.Column{col("pref_key", "varchar"), col("pref_value", "text")}, "pref_key", false, true},
+		{"webhook URL keys", "webhook_settings",
+			[]*model.Column{col("webhook_url_key", "varchar"), col("webhook_url_value", "text")}, "webhook_url_key", false, true},
 	}
 	for _, c := range cases {
 		m := genericMeta(&model.Table{Name: c.table, Columns: c.cols}, &preset.Result{})
@@ -90,6 +92,14 @@ func TestGuardKeys(t *testing.T) {
 	// to count.
 	if people, demote := guardKeys(family); !demote || people != len(family)-2 {
 		t.Errorf("a table keyed by <first> <last> phone: %d people, demoted %v", people, demote)
+	}
+	// The last rules' words count as unknown words, as nonsense would.
+	newWords := []string{"maria pw", "jane hook", "nikos uri", "anna urls", "eleni webhooks", "theme"}
+	nonsense := []string{"maria qzx", "jane qzy", "nikos qzz", "anna qxx", "eleni qxy", "theme"}
+	p1, d1 := guardKeys(newWords)
+	p2, d2 := guardKeys(nonsense)
+	if p1 != p2 || d1 != d2 {
+		t.Errorf("new words: %d people, demoted %v; nonsense: %d, %v", p1, d1, p2, d2)
 	}
 }
 

@@ -130,37 +130,6 @@ func TestPasswordHash(t *testing.T) {
 	}
 }
 
-func TestFindSecrets(t *testing.T) {
-	stripeLive := "sk_" + "live_" + strings.Repeat("a1B2", 6)
-	stripeTest := "sk_" + "test_" + strings.Repeat("c3D4", 6)
-	aws := "AKIA" + "IOSFODNN7EXAMPLE"
-	jwt := "eyJ" + "hbGciOiJIUzI1NiJ9" + ".eyJ" + "zdWIiOiIxMjM0NTY3ODkwIn0" + "." + strings.Repeat("sig_", 5)
-	ant := "sk-" + "ant-api03-" + strings.Repeat("Ab9_", 10)
-	google := "AI" + "za" + strings.Repeat("Bx3_", 8) + "Bx3"
-
-	cases := []struct {
-		in   string
-		kind string
-		mode string
-	}{
-		{"key=" + stripeLive, "Stripe secret key", "live"},
-		{stripeTest, "Stripe secret key", "test"},
-		{"aws " + aws + " here", "AWS access key ID", "live"},
-		{jwt, "JSON Web Token", ""},
-		{ant, "Anthropic API key", "live"},
-		{google, "Google API key", "live"},
-	}
-	for _, c := range cases {
-		hits := FindSecrets(c.in)
-		if len(hits) != 1 || hits[0].Kind != c.kind || hits[0].Mode != c.mode {
-			t.Errorf("FindSecrets(%s...) = %+v, want one %s (%s)", c.in[:6], hits, c.kind, c.mode)
-		}
-	}
-	if hits := FindSecrets("plain text with sk_ and AKIA mentioned"); len(hits) != 0 {
-		t.Errorf("false positives: %+v", hits)
-	}
-}
-
 func TestEmailList(t *testing.T) {
 	for _, s := range []string{"staff@mail.fixture.gr, owner@mail.fixture.gr", "a@mail.fixture.gr;b@mail.fixture.gr", "a@mail.fixture.gr b@mail.fixture.gr",
 		"a@mail.fixture.gr\x0ab@mail.fixture.gr"} {

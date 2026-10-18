@@ -38,8 +38,11 @@ type nameRule struct {
 	// ctxPrefix lets a context word that starts with a tableCtx word count,
 	// for tables named with run-together words.
 	ctxPrefix bool
-	sev       model.Severity
-	note      string
+	// keepOut keeps the rule's words out of ruleWords, so the splitter,
+	// the key-shape guard and labels don't learn them.
+	keepOut bool
+	sev     model.Severity
+	note    string
 }
 
 func words(s string) map[string]bool {
@@ -145,7 +148,7 @@ func aboutMessages(tokens, ctx []string) bool {
 func passwordWords(alt []string) bool {
 	for _, w := range alt {
 		switch w {
-		case "pass", "password", "passwords", "passphrase":
+		case "pass", "password", "passwords", "passphrase", "pw":
 			return true
 		}
 	}
@@ -382,6 +385,22 @@ func buildRules() []nameRule {
 		}(),
 		// Last, so "recipient name" stays a name and "recipient message" free text.
 		rule(model.CatEmail, tStr, "recipient|recipients", "name names type types id ids count role roles"),
+		// After every other rule, so a name one of them knows keeps its
+		// category (ip_webhook, email_webhook). A webhook's URL may carry a
+		// token, or be the site's own callback, so it's medium.
+		func() nameRule {
+			r := rule(model.CatSecret, tStr|tBin|tJSON, "webhook|webhooks|webhook url|webhook urls|webhook uri|hook url",
+				"use send sent trigger triggered last")
+			r.last, r.keepOut, r.sev = true, true, model.SeverityMedium
+			return r
+		}(),
+		func() nameRule {
+			// Paddle Classic's vendor_auth_code, and PHP_AUTH_PW in logged
+			// $_SERVER arrays, judged as a password.
+			r := rule(model.CatSecret, tStr|tBin|tJSON, "vendor auth code|auth pw", "use send sent trigger triggered last")
+			r.last, r.keepOut = true, true
+			return r
+		}(),
 	}
 	return rules
 }

@@ -7,6 +7,13 @@ admin_login_logs	admin_post_details		password		secret	critical	high	null
 admin_login_logs	admin_post_details		set_password		secret	critical	high	null
 admin_login_logs	admin_post_details		username		username	medium	medium	fake_username
 admin_login_logs	admin_username				username	medium	medium	fake_username
+api_request_log	headers		Authorization		secret	critical	high	null
+api_request_log	payload				secret	critical	high	null
+api_request_log	request_headers				secret	critical	high	null
+api_request_log	request_headers		Authorization		secret	high	high	null
+api_request_log	request_line				secret	high	high	null
+api_request_log	request_url				secret	high	high	null
+api_request_log	server_vars		PHP_AUTH_PW		secret	critical	high	null
 banfilters	ban_content				free_text	medium	medium	redact
 cache_store	cs_value	settings	email_in		email	high	high	fake_email
 contacts	contact_name				person_name	medium	medium	fake_name
@@ -22,6 +29,12 @@ form_entries	field_value	Phone number			phone	high	high	fake_phone
 form_entries	field_value	VAT number			national_id	high	medium	hash
 game_logs	summonername				username	medium	medium	fake_username
 inline_notifications	notify_text				free_text	medium	medium	redact
+integrations	credential				secret	critical	high	null
+integrations	discord_webhook				secret	critical	high	null
+integrations	settings		discord.webhook		secret	critical	high	null
+integrations	settings		google.refresh_token		secret	critical	high	null
+integrations	settings		paddle.api_key		secret	critical	high	null
+integrations	webhook_url				secret	medium	medium	null
 kv	key				person_name	low	low	hash
 kv	value				phone	high	high	fake_phone
 member_settings	member_value				email	high	high	fake_email
@@ -51,6 +64,8 @@ paypal_ipn	ipn_data		address_zip		postcode	medium	medium	fake_postcode
 paypal_ipn	ipn_data		first_name		person_name	medium	medium	fake_first_name
 paypal_ipn	ipn_data		last_name		person_name	medium	medium	fake_last_name
 paypal_ipn	ipn_data		payer_email		email	high	high	fake_email
+push_devices	expo_token				secret	high	medium	null
+push_devices	registration_id				device_id	medium	high	hash
 setting	value	company_address_1			address	high	medium	fake_street
 setting	value	company_email			email	high	high	fake_email
 setting	value	company_name			company	low	medium	fake_company

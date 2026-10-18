@@ -238,3 +238,12 @@ func TestReadKey(t *testing.T) {
 		}
 	}
 }
+
+// The last rules' words don't make name-like keys read as labels.
+func TestFreeTextKeyNewWords(t *testing.T) {
+	for _, k := range []string{"maria pw", "jane hook", "nikos uri", "anna urls", "eleni webhooks"} {
+		if !FreeTextKey(k) {
+			t.Errorf("%q would be shown", k)
+		}
+	}
+}

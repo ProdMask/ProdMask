@@ -69,3 +69,12 @@ func TestBinaryIP(t *testing.T) {
 		t.Errorf("%d of 1000 random values read as addresses", hits)
 	}
 }
+
+// IP names that end in a webhook word still match the IP rule first.
+func TestBinaryIPColumnWebhookNames(t *testing.T) {
+	for _, c := range []string{"ip_webhook", "client_ip_hook_url"} {
+		if !BinaryIPColumn("integrations", c) {
+			t.Errorf("%s isn't read as hex", c)
+		}
+	}
+}

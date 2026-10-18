@@ -167,6 +167,7 @@ func (f *filler) generic() {
 	f.insert("customers", []string{"customer_name", "customer_value"}, customers)
 	f.insert("member_settings", []string{"member_name", "member_value"}, memberSettings)
 	f.insert("kv", []string{"key", "value"}, kvRows)
+	f.secretTables()
 }
 
 // binaryIP returns an address as the bytes an app stores: 4 for IPv4, 16

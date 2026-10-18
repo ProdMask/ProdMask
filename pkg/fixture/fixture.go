@@ -39,6 +39,9 @@ type Options struct {
 	// Canary is placed inside several stored values. Reports must never
 	// contain it.
 	Canary string
+	// Planted, when set, receives the secrets the fixture plants, for leak
+	// tests. It stays in memory.
+	Planted *Planted
 }
 
 // Build drops and recreates the database and fills it with fake data for
@@ -75,7 +78,7 @@ func Build(ctx context.Context, admin *sql.DB, platform, database string, opts O
 	if _, err := conn.ExecContext(ctx, ddl); err != nil {
 		return fmt.Errorf("create %s tables: %w", platform, err)
 	}
-	f := &filler{ctx: ctx, conn: conn, g: newGen(42), canary: opts.Canary}
+	f := &filler{ctx: ctx, conn: conn, g: newGen(42), canary: opts.Canary, planted: opts.Planted}
 	switch platform {
 	case "wordpress":
 		f.wordpress()
@@ -91,11 +94,12 @@ func Build(ctx context.Context, admin *sql.DB, platform, database string, opts O
 
 // filler inserts rows and remembers the first error.
 type filler struct {
-	ctx    context.Context
-	conn   *sql.Conn
-	g      *gen
-	canary string
-	err    error
+	ctx     context.Context
+	conn    *sql.Conn
+	g       *gen
+	canary  string
+	planted *Planted
+	err     error
 }
 
 // insert adds rows in batches of multi-row INSERTs.

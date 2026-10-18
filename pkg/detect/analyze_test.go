@@ -213,3 +213,102 @@ func TestFindingsNeverContainValues(t *testing.T) {
 		t.Fatalf("a sampled value leaked into findings: %s", raw)
 	}
 }
+
+// TestAnalyzeNewSecrets checks severities and notes for v0.5.0's formats,
+// push tokens and webhook names.
+func TestAnalyzeNewSecrets(t *testing.T) {
+	g := newTokGen(20)
+	webhook := "https://disc" + "ord.com/api/web" + "hooks/1" + g.of(tDigit, 18) + "/" + g.of(tB64U, 68)
+	raw, _ := json.Marshal(map[string]any{"discord": map[string]any{"webhook": webhook}, "enabled": "yes"})
+	fs := Analyze(subject("settings", "value", "longtext"), profileOf(string(raw)))
+	if f := find(fs, model.CatSecret, "discord.webhook"); f == nil || f.Severity != model.SeverityCritical ||
+		!strings.Contains(f.Note, "real chat channels") {
+		t.Errorf("Discord webhook in settings: %+v", fs)
+	}
+	logic := "https://prod-21.westeurope.logic.azure.com:443/workflows/" + g.of(tHex, 32) +
+		"/triggers/manual/paths/invoke?api-version=2016-06-01&sig=" + g.of(tB64U, 43)
+	fs = Analyze(subject("integrations", "endpoint", "varchar"), profileOf(logic))
+	if f := find(fs, model.CatSecret, ""); f == nil || !strings.Contains(f.Note, "trigger the real workflow") {
+		t.Errorf("Logic Apps URL: %+v", fs)
+	}
+	fs = Analyze(subject("request_log", "headers", "text"),
+		profileOf("GET /api/orders Authorization: Bearer "+g.mixed(tAlnum, 40)+" 200"))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Severity != model.SeverityHigh {
+		t.Errorf("bearer header in a log: %+v", fs)
+	}
+	fs = Analyze(subject("request_log", "headers", "text"),
+		profileOf("Authorization: Basic "+b64("svc_"+g.of(tLower, 8)+":"+g.mixed(tAlnum, 14))))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Severity != model.SeverityCritical {
+		t.Errorf("Basic header: %+v", fs)
+	}
+	two := "keys " + "sk_" + "live_" + g.of(tAlnum, 24) + " and " + "AK" + "IA" + g.of(tUpper+tDigit, 16)
+	fs = Analyze(subject("settings", "notes", "text"), profileOf(two))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Matched != 1 || f.Sampled != 1 {
+		t.Errorf("a value with two kinds counts once: %+v", fs)
+	}
+	paddle := "pdl_" + "sdbx_apikey_" + g.of(tLower+tDigit, 26) + "_" + g.of(tAlnum, 22) + "_" + g.of(tAlnum, 3)
+	fs = Analyze(subject("settings", "notes", "text"), profileOf("sandbox key "+paddle))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Severity != model.SeverityMedium || !strings.Contains(f.Note, "test-mode") {
+		t.Errorf("sandbox Paddle key: %+v", fs)
+	}
+	var push []string
+	for i := 0; i < 3; i++ {
+		push = append(push, g.of(tB64U, 22)+":APA91b"+g.of(tB64U, 134))
+	}
+	fs = Analyze(subject("push_devices", "registration_id", "varchar"), profileOf(push...))
+	if f := find(fs, model.CatDeviceID, ""); f == nil || f.Mask != "hash" || !strings.Contains(f.Note, "push notifications") {
+		t.Errorf("FCM tokens: %+v", fs)
+	}
+	fs = Analyze(subject("push_devices", "fcm_token", "varchar"), profileOf(push...))
+	if len(fs) != 1 || fs[0].Category != model.CatSecret {
+		t.Errorf("FCM tokens under a token name: %+v", fs)
+	}
+	fs = Analyze(subject("integrations", "webhook_url", "varchar"),
+		profileOf("https://erp.fixture-partner.gr/hooks/orders", "https://crm.fixture-partner.gr/hooks/customers"))
+	if len(fs) != 1 || fs[0].Category != model.CatSecret || fs[0].Severity != model.SeverityMedium {
+		t.Errorf("webhook name with plain URLs: %+v", fs)
+	}
+}
+
+// TestAnalyzeMatchedAndPushTokens checks Matched over several values, and
+// push tokens under a device name, alone, and from Expo.
+func TestAnalyzeMatchedAndPushTokens(t *testing.T) {
+	g := newTokGen(21)
+	vals := []string{"key " + "sk_" + "live_" + g.of(tAlnum, 24), "plain words and nothing else in this note",
+		"keys " + "sk_" + "live_" + g.of(tAlnum, 24) + " and " + "AK" + "IA" + g.of(tUpper+tDigit, 16)}
+	fs := Analyze(subject("settings", "notes", "text"), profileOf(vals...))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Matched != 2 || f.Sampled != 3 {
+		t.Errorf("two values of three hold secrets: %+v", fs)
+	}
+	raw, _ := json.Marshal(map[string]any{"api_key": "sk_" + "live_" + g.of(tAlnum, 24)})
+	fs = Analyze(subject("settings", "value", "longtext"), profileOf(string(raw), string(raw), "{\"api_key\":\"\"}"))
+	if f := find(fs, model.CatSecret, "api_key"); f == nil || f.Matched != 2 {
+		t.Errorf("a named secret path: %+v", fs)
+	}
+	fs = Analyze(subject("settings", "api_key", "varchar"),
+		profileOf("sk_"+"live_"+g.of(tAlnum, 24), "sk_"+"live_"+g.of(tAlnum, 24), "Zq8x2LmN4pR7tY9w"))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Matched != 2 || f.Sampled != 3 {
+		t.Errorf("a secret name with two keys in three values: %+v", fs)
+	}
+	fcm := func() string { return g.of(tB64U, 22) + ":APA91b" + g.of(tB64U, 134) }
+	var expoUUIDs []string
+	for i := 0; i < 3; i++ {
+		expoUUIDs = append(expoUUIDs, "ExponentPush"+"Token["+g.of(tB64U, 22)+"]")
+	}
+	fs = Analyze(subject("members", "udid", "varchar"), profileOf(expoUUIDs...))
+	if f := find(fs, model.CatDeviceID, ""); f == nil || f.Confidence != model.ConfidenceHigh {
+		t.Errorf("push tokens under a device name: %+v", fs)
+	}
+	fs = Analyze(subject("push_devices", "registration_id", "varchar"), profileOf(fcm()))
+	if f := find(fs, model.CatDeviceID, ""); f == nil {
+		t.Errorf("a single push token: %+v", fs)
+	}
+	var expo []string
+	for i := 0; i < 3; i++ {
+		expo = append(expo, "ExponentPush"+"Token["+g.of(tB64U, 22)+"]")
+	}
+	fs = Analyze(subject("push_devices", "registration_id", "varchar"), profileOf(expo...))
+	if f := find(fs, model.CatDeviceID, ""); f == nil || !strings.Contains(f.Note, "push notifications") {
+		t.Errorf("Expo push tokens: %+v", fs)
+	}
+}

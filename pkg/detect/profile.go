@@ -55,6 +55,8 @@ type Profile struct {
 	PaymentID            int
 	Date                 int
 	Secrets              map[string]*SecretCount
+	// SecretValues counts the values with at least one secret, once each.
+	SecretValues int
 
 	// Prose: values with spaces that are longer than a few words.
 	Text, TextEmail, TextPhone, TextIP, TextCard int
@@ -73,10 +75,11 @@ type Profile struct {
 	MaxDigits int
 
 	// Values that back or rule out other judgements: hardware IDs
-	// (Opaque), email addresses inside URLs (Inline), URLs and paths
-	// (URL), cryptocurrency addresses (Crypto), text with spaces and no
-	// merge tags (Spaced), and whole numbers (Whole).
-	Opaque, Inline, URL, Crypto, Spaced, Whole int
+	// (Opaque), push notification tokens (Push), email addresses inside
+	// URLs (Inline), URLs and paths (URL), cryptocurrency addresses
+	// (Crypto), text with spaces and no merge tags (Spaced), and whole
+	// numbers (Whole).
+	Opaque, Push, Inline, URL, Crypto, Spaced, Whole int
 
 	// pw counts what each value could be under a password's name, split by
 	// whether it mixes two or more kinds of character. pwMarks counts the
@@ -93,6 +96,9 @@ type Profile struct {
 	parent     []string // tokens of the key above a path's own, for echoes
 	ctx        []string // words of the table, for naming paths past the cap
 	named      int      // paths admitted past maxPaths
+	// overflowHit marks a secret in a leaf past the path cap of the value
+	// being walked, so the value counts once in SecretValues.
+	overflowHit bool
 }
 
 // WithContext records the words of the table a field belongs to, so paths
@@ -131,6 +137,7 @@ func (p *Profile) Add(v string) {
 	}
 	if p.walk && looksStructured(t) {
 		filled := 0
+		p.overflowHit = false
 		ok := walkStructured(t, func(path []string, leaf string) {
 			if strings.TrimSpace(leaf) != "" {
 				filled++
@@ -141,6 +148,9 @@ func (p *Profile) Add(v string) {
 			if filled > 0 {
 				p.NonEmpty++
 				p.Structured++
+			}
+			if p.overflowHit {
+				p.SecretValues++
 			}
 			return
 		}
@@ -206,6 +216,7 @@ func (p *Profile) versionKeyed(path []string) bool {
 // on the parent value.
 func (p *Profile) overflow(v string) {
 	for _, h := range FindSecrets(strings.TrimSpace(v)) {
+		p.overflowHit = true
 		p.addSecret(h)
 	}
 }
@@ -266,6 +277,9 @@ func (p *Profile) addScalar(t string) {
 	}
 	if opaque(t) {
 		p.Opaque++
+	}
+	if pushToken(t) {
+		p.Push++
 	}
 	if urlLike(t) {
 		p.URL++
@@ -339,8 +353,11 @@ func (p *Profile) addScalar(t string) {
 	if reDate.MatchString(t) {
 		p.Date++
 	}
-	for _, h := range FindSecrets(t) {
-		p.addSecret(h)
+	if hits := FindSecrets(t); len(hits) > 0 {
+		p.SecretValues++
+		for _, h := range hits {
+			p.addSecret(h)
+		}
 	}
 	if !matched && len(t) >= 20 && strings.ContainsAny(t, " \n") {
 		p.Text++

@@ -27,6 +27,9 @@ var (
 var ruleWords = func() map[string]bool {
 	m := map[string]bool{}
 	for _, r := range nameRules {
+		if r.keepOut {
+			continue
+		}
 		for _, alt := range r.alts {
 			for _, w := range alt {
 				m[w] = true

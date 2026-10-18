@@ -50,6 +50,18 @@ func opaque(t string) bool {
 	return false
 }
 
+// Push notification tokens: Firebase Cloud Messaging registration tokens
+// and Expo push tokens. They name one app on one device.
+var (
+	reFCMToken  = regexp.MustCompile(`^[A-Za-z0-9_-]{11,}:APA91b[A-Za-z0-9_-]{100,}$`)
+	reExpoToken = regexp.MustCompile(`^Expo(?:nent)?PushToken\[[A-Za-z0-9_-]{20,}\]$`)
+)
+
+func pushToken(t string) bool {
+	return strings.Contains(t, ":APA91b") && reFCMToken.MatchString(t) ||
+		strings.HasPrefix(t, "Expo") && reExpoToken.MatchString(t)
+}
+
 func countHex(s string) int {
 	n := 0
 	for i := 0; i < len(s); i++ {

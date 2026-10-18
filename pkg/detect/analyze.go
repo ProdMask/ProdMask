@@ -210,7 +210,7 @@ func support(nm *NameMatch, p *Profile) (int, bool) {
 	case model.CatUserAgent:
 		return p.UserAgent, true
 	case model.CatDeviceID:
-		return p.Opaque, true
+		return p.Opaque + p.Push, true
 	case model.CatBankAccount:
 		if nm.Words == "iban" {
 			return p.IBAN, true
@@ -237,6 +237,7 @@ var valueChecks = []valueCheck{
 	{model.CatPhone, func(p *Profile) int { return p.PhoneStrict }, 0.6, 3, "phone numbers"},
 	{model.CatUserAgent, func(p *Profile) int { return p.UserAgent }, 0.5, 2, "browser user agents"},
 	{model.CatPaymentToken, func(p *Profile) int { return p.PaymentID }, 0.5, 2, "payment provider IDs"},
+	{model.CatDeviceID, func(p *Profile) int { return p.Push }, 0.5, 1, "push notification tokens"},
 }
 
 // oneValue lists the categories for which one matching value is enough
@@ -384,7 +385,8 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			continue
 		}
 		// Tokens are often stored hashed; a hash there is still a token.
-		if named >= 0 && out[named].Category == model.CatSecret && c.cat == model.CatPasswordHash {
+		// Push tokens under a token's name back the secret finding.
+		if named >= 0 && out[named].Category == model.CatSecret && (c.cat == model.CatPasswordHash || c.cat == model.CatDeviceID) {
 			continue
 		}
 		r := ratio(n, p.NonEmpty)
@@ -415,6 +417,9 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		if c.cat == model.CatPaymentToken {
 			f.Severity = model.SeverityMedium
 		}
+		if c.cat == model.CatDeviceID {
+			f.Note = "staging could send push notifications to real devices"
+		}
 		if identEmail {
 			f.Confidence = model.ConfidenceMedium
 			if r >= 0.5 {
@@ -434,7 +439,7 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 	}
 
 	if p.Secrets != nil {
-		live, test, unknown := p.SecretTotals()
+		live, _, unknown := p.SecretTotals()
 		sev := model.SeverityMedium
 		switch {
 		case live > 0:
@@ -453,7 +458,7 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 				f.Severity = sev
 			}
 			f.Confidence = model.ConfidenceHigh
-			f.Matched = live + test + unknown
+			f.Matched = p.SecretValues
 			f.Source += "+value"
 			f.Reasons = append(f.Reasons, reason)
 		} else {
@@ -463,17 +468,18 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			f.Confidence = model.ConfidenceHigh
 			f.Mask = model.CatSecret.Info().Mask
 			f.Source = "value"
-			f.Sampled, f.Matched = p.NonEmpty, live+test+unknown
+			f.Sampled, f.Matched = p.NonEmpty, p.SecretValues
 			f.Reasons = []string{reason}
 			out = append(out, f)
 		}
+		last := len(out) - 1
+		if named >= 0 && out[named].Category == model.CatSecret {
+			last = named
+		}
 		if live == 0 && unknown == 0 {
-			last := len(out) - 1
-			if named >= 0 && out[named].Category == model.CatSecret {
-				last = named
-			}
 			out[last].Note = appendNote(out[last].Note, "test-mode keys only")
 		}
+		out[last].Note = appendNote(out[last].Note, secretKindNotes(p.SecretKinds()))
 	}
 
 	// Messages between people: prose is enough, since names and addresses
@@ -777,4 +783,26 @@ func SortFindings(fs []model.Finding) {
 		}
 		return a.Category < b.Category
 	})
+}
+
+// secretKindNotes says what a copy of these kinds of secret would do on
+// staging.
+func secretKindNotes(kinds []string) string {
+	var chat, workflow bool
+	for _, k := range kinds {
+		switch secretNotes[k] {
+		case noteChat:
+			chat = true
+		case noteWorkflow:
+			workflow = true
+		}
+	}
+	var notes []string
+	if chat {
+		notes = append(notes, "a copy would post to real chat channels")
+	}
+	if workflow {
+		notes = append(notes, "a copy would trigger the real workflow")
+	}
+	return strings.Join(notes, "; ")
 }

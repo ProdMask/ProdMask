@@ -428,3 +428,18 @@ func TestReadKVBinaryValues(t *testing.T) {
 		t.Errorf("mode %d, keys %v", kv.mode, kv.keys)
 	}
 }
+
+// A key that ends in a webhook word is looked up with the named keys; no
+// other key changes tier.
+func TestSubjectsWebhookTier(t *testing.T) {
+	subs := subjects(&model.Table{Name: "wp_options"}, optionsMeta(), []string{"aaa_plain", "discord_webhook", "webhook_status"})
+	for _, s := range subs {
+		want := tierSingle
+		if s.label == "discord_webhook" {
+			want = tierNamed
+		}
+		if s.tier != want {
+			t.Errorf("%s: tier %d, want %d", s.label, s.tier, want)
+		}
+	}
+}
