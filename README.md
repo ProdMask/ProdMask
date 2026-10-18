@@ -152,28 +152,6 @@ All fixture data is invented:
 - IP addresses come from the documentation ranges;
 - secret-shaped test strings are assembled at run time.
 
-### Releasing
-
-Push a version tag:
-
-```bash
-git tag v0.1.0
-```
-
-```bash
-git push origin v0.1.0
-```
-
-The release workflow then:
-
-1. runs the tests;
-2. builds `prodmask` for Linux, macOS and Windows (amd64 and arm64);
-3. publishes the archives with a `checksums.txt` to GitHub Releases.
-
-Tags with a suffix, such as `v0.2.0-rc.1`, are published as pre-releases.
-
-To try the release build without publishing, run `goreleaser release --snapshot --clean`. The archives land in `dist/`. CI runs the same snapshot build on every push to `main` and on every pull request.
-
 ## prodmask Pro
 
 The scanner is free and stays open source. prodmask Pro is a separate paid product, in development. It will:
