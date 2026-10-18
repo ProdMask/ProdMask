@@ -2,6 +2,7 @@ package detect
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ProdMask/ProdMask/pkg/model"
@@ -154,6 +155,138 @@ func TestMatchName(t *testing.T) {
 		{"settings", "recipients", "varchar", model.CatEmail},
 		{"orders", "recipient_name", "varchar", model.CatPersonName},
 		{"gifts", "recipient_message", "text", model.CatFreeText},
+		// Passwords named pass: a person's, a service's, or no password.
+		{"admin", "pass", "varchar", model.CatPasswordHash},
+		{"client", "pass", "varchar", model.CatPasswordHash},
+		{"settings", "admin_pass", "varchar", model.CatPasswordHash},
+		{"servers", "ftppass", "varchar", model.CatSecret},
+		{"servers", "sshpass", "varchar", model.CatSecret},
+		{"servers", "db_pass", "varchar", model.CatSecret},
+		{"games", "battle_pass", "varchar", ""},
+		{"games", "season_pass", "varchar", ""},
+		{"games", "boarding_pass", "varchar", ""},
+		{"games", "day_pass", "varchar", ""},
+		{"games", "test_pass", "varchar", ""},
+		{"players", "current_pass", "varchar", ""},
+		{"users", "new_pass", "varchar", model.CatPasswordHash},
+		// Names that describe passwords rather than hold one.
+		{"settings", "password_type", "varchar", ""},
+		{"settings", "password_mode", "varchar", ""},
+		{"settings", "password_rules", "varchar", ""},
+		{"settings", "password_page", "varchar", ""},
+		{"settings", "password_timeout", "int", ""},
+		{"settings", "password_field_color", "varchar", ""},
+		{"users", "password_set_by", "varchar", ""},
+		{"users", "password_salt", "varchar", model.CatSecret},
+		{"users", "password_iv", "varchar", ""},
+		{"users", "password_last_set", "varchar", model.CatPasswordHash},
+		{"users", "set_password", "varchar", model.CatPasswordHash},
+		// Login keys, signatures, Twitter's abbreviations, BYOND's ckey.
+		{"members", "member_login_key", "varchar", model.CatSecret},
+		{"core_sys_cp_sessions", "session_member_login_key", "varchar", model.CatSecret},
+		{"mybb_users", "loginkey", "varchar", model.CatSecret},
+		{"settings", "api_signature", "", model.CatSecret},
+		{"core_sys_conf_settings", "shoutbox_twitter_ckey", "", model.CatSecret},
+		{"core_sys_conf_settings", "shoutbox_twitter_csecret", "", model.CatSecret},
+		{"core_sys_conf_settings", "shoutbox_twitter_asecret", "", model.CatSecret},
+		{"core_sys_conf_settings", "shoutbox_twitter_atoken", "", model.CatSecret},
+		{"player", "ckey", "varchar", ""},
+		{"ban", "ckey", "varchar", ""},
+		// Run-together IPs, and network addresses that aren't streets.
+		{"mybb_users", "regip", "varbinary", model.CatIPAddress},
+		{"mybb_users", "lastip", "varbinary", model.CatIPAddress},
+		{"flows", "src_addr", "varchar", model.CatIPAddress},
+		{"flows", "srcaddr", "varchar", model.CatIPAddress},
+		{"flows", "clientaddr", "varchar", model.CatIPAddress},
+		{"bot_visits", "request_addr", "text", ""},
+		// Address parts, and the name on an address.
+		{"addresses", "street_name", "varchar", model.CatAddress},
+		{"addresses", "street_code", "varchar", model.CatAddress},
+		{"paypal_ipn", "address_street", "", model.CatAddress},
+		{"paypal_ipn", "address_city", "", model.CatCity},
+		{"paypal_ipn", "address_state", "", model.CatRegion},
+		{"paypal_ipn", "address_zip", "", model.CatPostcode},
+		{"paypal_ipn", "address_country", "", model.CatCountry},
+		{"paypal_ipn", "address_country_code", "", model.CatCountry},
+		{"paypal_ipn", "address_name", "", model.CatPersonName},
+		{"paypal_ipn", "address_status", "", ""},
+		{"addresses", "address_name", "varchar", ""},
+		{"orders", "shipping_address_name", "varchar", model.CatPersonName},
+		// Group, role and product names aren't people's.
+		{"admin_group", "name", "varchar", ""},
+		{"ab_customer_groups", "name", "varchar", ""},
+		{"ab_user_groups", "name", "varchar", ""},
+		{"user_roles", "name", "varchar", ""},
+		{"user_products", "name", "varchar", ""},
+		{"team_members", "name", "varchar", model.CatPersonName},
+		{"members", "name", "varchar", model.CatPersonName},
+		// Names, handles and birthdays the rules missed.
+		{"members", "members_seo_name", "varchar", model.CatUsername},
+		{"nexus_packages", "p_seo_name", "varchar", ""},
+		{"core_sys_conf_settings", "username_characters", "", ""},
+		{"members", "first_login", "varchar", ""},
+		{"game_logs", "summonername", "varchar", model.CatUsername},
+		{"stats", "player_name", "varchar", model.CatUsername},
+		{"members", "bday_day", "int", model.CatDateOfBirth},
+		{"members", "bday_month", "int", model.CatDateOfBirth},
+		{"members", "bday_year", "int", model.CatDateOfBirth},
+		{"members", "birth_month", "int", model.CatDateOfBirth},
+		// Device and hardware IDs; a bare device_id points at a devices table.
+		{"members", "hwid", "text", model.CatDeviceID},
+		{"activations", "hwid", "varchar", model.CatDeviceID},
+		{"members", "hwid_updated_date", "datetime", ""},
+		{"jobs", "machine_id", "varchar", model.CatDeviceID},
+		{"phones", "imei", "bigint", model.CatDeviceID},
+		{"devices", "device_id", "varchar", ""},
+		// Messages between people, and text that isn't one.
+		{"message_topics", "mt_title", "varchar", model.CatFreeText},
+		{"inline_notifications", "notify_text", "text", model.CatFreeText},
+		{"message_posts", "msg_post", "mediumtext", model.CatFreeText},
+		{"mybb_privatemessages", "subject", "varchar", model.CatFreeText},
+		{"phpbb_privmsgs", "message_subject", "varchar", model.CatFreeText},
+		{"pmtext", "title", "varchar", model.CatFreeText},
+		{"profile_portal", "signature", "text", model.CatFreeText},
+		{"wp_pm_tasks", "title", "varchar", ""},
+		{"email_templates", "subject", "varchar", ""},
+		{"bulk_mail", "mail_subject", "varchar", ""},
+		{"message_translations", "text", "text", ""},
+		{"logs", "msg", "text", ""},
+		{"logs", "error_msg", "text", ""},
+		{"gf_form_meta", "notifications", "longtext", ""},
+		{"adminnotification_inbox", "title", "varchar", ""},
+		{"ab_ant_messages", "title", "varchar", ""},
+		// Company settings that aren't company names.
+		{"setting", "company_privacy_policy", "", ""},
+		{"setting", "company_tos", "", ""},
+		{"setting", "company_signature", "", model.CatFreeText},
+		{"setting", "company_note", "", model.CatFreeText},
+		{"setting", "company_name", "", model.CatCompany},
+		// Words that describe a password rule a name out only after it.
+		{"node__field_wifi_password", "field_wifi_password_value", "varchar", model.CatPasswordHash},
+		{"wp_posts", "page_password", "varchar", model.CatPasswordHash},
+		{"settings", "password_field_class", "varchar", ""},
+		{"settings", "password_page", "varchar", ""},
+		// An email account's password; a mail or FTP server's users' hashes.
+		{"settings", "emailpass", "varchar", model.CatSecret},
+		{"settings", "email_pass", "varchar", model.CatSecret},
+		{"ftp_users", "pass", "varchar", model.CatPasswordHash},
+		{"proxy_accounts", "pass", "varchar", model.CatPasswordHash},
+		{"smtp_logins", "pass", "varchar", model.CatPasswordHash},
+		{"smtp_servers", "pass", "varchar", model.CatSecret},
+		// A message's type, status and key, and the types, statuses and
+		// categories of tickets, aren't messages.
+		{"messages", "content_type", "varchar", ""},
+		{"chat_messages", "post_status", "varchar", ""},
+		{"message_posts", "msg_post_key", "varchar", ""},
+		{"ticket_types", "title", "varchar", ""},
+		{"ticket_statuses", "title", "varchar", ""},
+		{"notification_types", "title", "varchar", ""},
+		{"ticket_categories", "title", "varchar", ""},
+		{"ticket_priorities", "title", "varchar", ""},
+		{"chat_rooms", "title", "varchar", ""},
+		{"message_folders", "title", "varchar", ""},
+		{"tickets", "title", "varchar", model.CatFreeText},
+		{"room_messages", "text", "text", model.CatFreeText},
 	}
 	for _, c := range cases {
 		tc := tStr
@@ -161,12 +294,72 @@ func TestMatchName(t *testing.T) {
 			tc = classOf(c.dataType)
 		}
 		var got model.Category
-		if m := MatchName(Tokens(c.column), Tokens(c.table), tc); m != nil {
+		if m := MatchName(NameWords(c.column), Tokens(c.table), tc); m != nil {
 			got = m.Category
 		}
 		if got != c.want {
 			t.Errorf("%s.%s (%s): got %q, want %q", c.table, c.column, c.dataType, got, c.want)
 		}
+	}
+}
+
+// Paths are named in the context of the table, the column or meta key
+// holding them, and the keys above them.
+func TestMatchNameInContext(t *testing.T) {
+	cases := []struct {
+		name, ctx string
+		want      model.Category
+	}{
+		// WP Mail SMTP's smtp.pass and UpdraftPlus's FTP settings.
+		{"pass", "wp options wp mail smtp smtp", model.CatSecret},
+		{"pass", "wp options updraft ftp settings", model.CatSecret},
+		// POST data in an admin login log.
+		{"newpass", "admin login logs admin post details post", model.CatPasswordHash},
+		{"currentpass", "admin login logs admin post details post", model.CatPasswordHash},
+		// IPN data in a log column, and in a table named with one run-together word.
+		{"address_name", "logs ipn data", model.CatPersonName},
+		{"address_name", "paypalsales data", model.CatPersonName},
+		{"address_name", "addresses data", ""},
+		// WooCommerce's remote specs: plugin and action names aren't people's,
+		// although the option's own name says admin.
+		{"name", "wp options transient woocommerce admin remote free extensions specs en us plugins", ""},
+		{"name", "wp options transient woocommerce admin remote inbox notifications specs en us install actions", ""},
+		{"title", "wp options transient woocommerce admin remote inbox notifications specs en us", ""},
+		// IPB's cached app menu: the shoutbox's menu titles aren't messages.
+		{"title", "cache store app menu cache shoutbox items", ""},
+		// The head noun of the context decides what a bare name names.
+		{"name", "app data user groups", ""},
+		{"name", "app data group owner", model.CatPersonName},
+		{"name", "contact submissions data fields", model.CatPersonName},
+		{"name", "customer attributes", model.CatPersonName},
+		{"name", "orders shipping address", model.CatPersonName},
+		// A company's or a store's name isn't a person's, even under a customer.
+		{"name", "orders customer company", ""},
+		{"name", "orders customer store", ""},
+		// A service named above a user's settings: people come first by
+		// name, and the values decide.
+		{"pass", "users settings smtp", model.CatPasswordHash},
+	}
+	for _, c := range cases {
+		var got model.Category
+		if m := MatchName(NameWords(c.name), strings.Fields(c.ctx), tStr|tJSON); m != nil {
+			got = m.Category
+		}
+		if got != c.want {
+			t.Errorf("%s in %q: got %q, want %q", c.name, c.ctx, got, c.want)
+		}
+	}
+	// The message rule marks its matches; password names are marked too.
+	if m := MatchName(NameWords("mt_title"), Tokens("message_topics"), tStr); m == nil || !m.Messages {
+		t.Errorf("mt_title: got %+v, want a message match", m)
+	}
+	for _, name := range []string{"user_pass", "smtp_pass", "wallet_passphrase", "adminpass"} {
+		if m := MatchName(NameWords(name), nil, tStr); m == nil || !m.Password {
+			t.Errorf("%s: got %+v, want a password match", name, m)
+		}
+	}
+	if m := MatchName(NameWords("api_key"), nil, tStr); m == nil || m.Password {
+		t.Errorf("api_key: got %+v, want a secret that isn't a password", m)
 	}
 }
 

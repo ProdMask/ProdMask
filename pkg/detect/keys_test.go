@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -204,6 +205,36 @@ func TestWalkIPKeys(t *testing.T) {
 			if f.Category == model.CatIPAddress {
 				t.Errorf("%s: version keys reported as IPs: %+v", name, f)
 			}
+		}
+	}
+}
+
+func TestReadKey(t *testing.T) {
+	for key, label := range map[string]bool{
+		"Your Name": true, "Emergency contact": true, "Delivery date": true, "Gift message": true,
+		"Phone number": true, "VAT number": true, "shipping method": true, "Date of birth": true,
+		"Bank account": true, "Credit card": true, "Card holder": true,
+		"Jane Doe phone": false, "Next of kin": false, "John Street": false, "Peter Pan": false,
+		"Shipping Method": false, "Jane Doe": false, "Bank of America": false,
+		// A number beside a name is no label word; a label keeps its number.
+		"Jane 2": false, "Peter 4": false, "Maria 1": false, "jane2 x": false, "maria3 x": false,
+		"Address line 2": true, "Address Line 2": true, "Line 1": true, "Phone 2": true, "Email 2": true, "Your Name 2": true,
+	} {
+		if got := ReadKey(key).Label; got != label {
+			t.Errorf("ReadKey(%q).Label = %v, want %v (%+v)", key, got, label, ReadKey(key))
+		}
+	}
+	if kw := ReadKey("Jane Doe"); len(kw.Known) != 0 || kw.Unknown != 2 {
+		t.Errorf("Jane Doe: got %+v", kw)
+	}
+	if kw := ReadKey("Jane Doe phone"); !reflect.DeepEqual(kw.Known, []string{"phone"}) || kw.Unknown != 2 {
+		t.Errorf("Jane Doe phone: got %+v", kw)
+	}
+	for key, free := range map[string]bool{
+		"Jane Doe": true, "Next of kin": true, "Phone number": false, "billing_email": false, "um_key": false,
+	} {
+		if got := FreeTextKey(key); got != free {
+			t.Errorf("FreeTextKey(%q) = %v, want %v", key, got, free)
 		}
 	}
 }

@@ -199,9 +199,11 @@ const (
 )
 
 // subjects groups the known keys of a table into single keys and families
-// and orders them for lookups.
+// and orders them for lookups. In a table the key-shape guard reads, keys
+// that read as free text are shown as HiddenKey, whenever they were found.
 func subjects(t *model.Table, meta *preset.MetaTable, keys []string) []*keySubject {
 	words := detect.Tokens(t.Name)
+	hide := func(k string) bool { return meta.Guard && detect.FreeTextKey(k) }
 	probe := map[string]bool{}
 	for _, k := range meta.Probe {
 		probe[k] = true
@@ -213,12 +215,15 @@ func subjects(t *model.Table, meta *preset.MetaTable, keys []string) []*keySubje
 			label = meta.Label(k)
 		}
 		s := &keySubject{label: label, shown: detect.ShowKey(label), keys: []string{k}, lookups: []string{k}, hint: meta.Hint(k)}
+		if hide(k) {
+			s.shown = detect.HiddenKey
+		}
 		switch {
 		case meta.Keys[k] != nil || probe[k]:
 			s.tier = tierPreset
 		case s.hint != nil && s.hint.Delete && s.hint.Category == "":
 			s.tier = tierCache
-		case detect.MatchName(detect.Tokens(label), words, detect.TypeString) != nil:
+		case !meta.Labels && detect.MatchName(detect.NameWords(label), words, detect.TypeString) != nil:
 			s.tier = tierNamed
 		default:
 			s.tier = tierSingle
@@ -240,6 +245,9 @@ func subjects(t *model.Table, meta *preset.MetaTable, keys []string) []*keySubje
 		f := &families[i]
 		s := &keySubject{label: f.Pattern, shown: detect.ShowPattern(f.Pattern), keys: f.Keys, family: f,
 			hint: f.Hint, lookups: spread(f.Keys, familySample)}
+		if slices.ContainsFunc(f.Keys, hide) {
+			s.shown = detect.HiddenKey
+		}
 		if s.hint == nil {
 			s.hint = meta.Hint(f.Keys[0])
 		}
@@ -311,6 +319,71 @@ type kvRead struct {
 	subjects  []*keySubject
 	rows      int // rows read besides the window
 	warnings  []string
+	failed    []string // the warnings about statements that failed or timed out
+	// The key-shape guard's verdict on a table found without a preset:
+	// keyed by data, so judged as a plain table; and how many of its keys
+	// look like people's names.
+	demoted bool
+	people  int
+}
+
+// guard applies the key-shape guard to the keys read so far, when the
+// table's shape needs it. It reports whether the table turned out to be
+// keyed by data.
+func (kv *kvRead) guard(meta *preset.MetaTable) bool {
+	if meta.Guard {
+		kv.people, kv.demoted = guardKeys(kv.keys)
+	}
+	return kv.demoted
+}
+
+// guardKeys counts the keys of a generic key/value table that look like
+// people's names, and reports whether that is half or more, which makes the
+// table keyed by data. They are free-text keys (with a space, and not read
+// as labels) with no known word (Jane Doe), and families of five or more
+// that share their known words around two or more unknown ones (<first>
+// <last> phone). Free-text keys are never shown, whatever the verdict.
+func guardKeys(keys []string) (people int, demote bool) {
+	families := map[string]int{}
+	for _, k := range keys {
+		if !detect.FreeTextKey(k) {
+			continue
+		}
+		switch kw := detect.ReadKey(k); {
+		case len(kw.Known) == 0:
+			people++
+		case kw.Unknown >= 2:
+			families[strings.Join(kw.Known, " ")]++
+		}
+	}
+	for _, n := range families {
+		if n >= 5 {
+			people += n
+		}
+	}
+	return people, len(keys) > 0 && people*2 >= len(keys)
+}
+
+// failures returns the warnings about statements that failed or timed out,
+// which stay when a table turns out not to be a key/value table.
+func (kv *kvRead) failures() []string { return kv.failed }
+
+// demotedKeyFinding reports the key column of a table the key-shape guard
+// demoted, at low confidence: its keys may be the people's names the guard
+// read, which the column's own name doesn't show, or text such as survey
+// questions, so the starter config only suggests a rule. A translation
+// table's keys are its source strings, never people's names: no finding.
+func demotedKeyFinding(t *model.Table, meta *preset.MetaTable, kv *kvRead) *model.Finding {
+	if meta.Labels {
+		return nil
+	}
+	return &model.Finding{
+		Table: t.Name, Column: meta.Key, Category: model.CatPersonName, Severity: model.SeverityLow,
+		Confidence: model.ConfidenceLow, Sampled: len(kv.keys), Matched: kv.people, Mask: "hash", Source: "value",
+		Reasons: []string{fmt.Sprintf("%d of %d keys may be people's names, alone or beside a field word", kv.people, len(kv.keys))},
+		Note: "shaped like a key/value table, but keyed by data, so judged as a plain table; " +
+			"hash keeps the keys distinct, if they are names",
+	}
 }
 
 func newKVRead() *kvRead {
@@ -319,6 +392,12 @@ func newKVRead() *kvRead {
 }
 
 func (kv *kvRead) warn(s string) { kv.warnings = append(kv.warnings, s) }
+
+// fail warns about a statement that failed or timed out.
+func (kv *kvRead) fail(s string) {
+	kv.warn(s)
+	kv.failed = append(kv.failed, s)
+}
 
 func (kv *kvRead) addKey(k string) {
 	if !kv.known[k] {
@@ -394,16 +473,20 @@ func readKV(ctx context.Context, sess *dbconn.Session, sm *sample.Sampler, t *mo
 		kv.spend(read, b)
 		kv.wholeRows(rows, opts.KeySampleRows)
 		if err == nil && complete {
+			kv.guard(meta)
 			return kv
 		}
 		// A stale estimate, the byte limit or an error. The rows read so
 		// far stay; the keys are listed for the rest.
 		kv.big = true
 		if err != nil {
-			kv.warn(fmt.Sprintf("could not read %s whole (%s)", t.Name, dbconn.ErrorText(err)))
+			kv.fail(fmt.Sprintf("could not read %s whole (%s)", t.Name, dbconn.ErrorText(err)))
 			if dbconn.IsTimeout(err) {
 				kv.why = "reading it whole timed out"
 			}
+		}
+		if kv.guard(meta) {
+			return kv
 		}
 		kv.mode = fallbackMode(err, facts, b)
 	}
@@ -413,7 +496,7 @@ func readKV(ctx context.Context, sess *dbconn.Session, sm *sample.Sampler, t *mo
 		}
 		keys, more, err := sm.Keys(ctx, t, keyCol, maxListedKeys)
 		if err != nil {
-			kv.warn(fmt.Sprintf("could not list the keys of %s (%s); sampled its rows instead", t.Name, dbconn.ErrorText(err)))
+			kv.fail(fmt.Sprintf("could not list the keys of %s (%s); sampled its rows instead", t.Name, dbconn.ErrorText(err)))
 			kv.mode = modeSample
 			kv.why = "listing them failed"
 			return kv
@@ -426,6 +509,10 @@ func readKV(ctx context.Context, sess *dbconn.Session, sm *sample.Sampler, t *mo
 		if more {
 			kv.warn(fmt.Sprintf("%s has more than %d keys; the first %d by name were listed, and the keys presets know were probed",
 				t.Name, maxListedKeys, maxListedKeys))
+		}
+		// Before any value is looked up.
+		if kv.guard(meta) {
+			return kv
 		}
 		kv.lookup(ctx, sm, t, meta, keyCol, valueCol, valueLen, opts, b)
 		if more {
@@ -516,7 +603,7 @@ func (kv *kvRead) settle(t *model.Table, keys []string, got sample.Batch, err er
 		ran++
 	}
 	if err != nil {
-		kv.warn(fmt.Sprintf("stopped reading the keys of %s (%s); the rest are judged by name", t.Name, dbconn.ErrorText(err)))
+		kv.fail(fmt.Sprintf("stopped reading the keys of %s (%s); the rest are judged by name", t.Name, dbconn.ErrorText(err)))
 		return ran
 	}
 	for _, s := range kv.subjects {
@@ -555,7 +642,7 @@ func (kv *kvRead) probe(ctx context.Context, sm *sample.Sampler, t *model.Table,
 	}
 	kv.spend(got.Bytes, b)
 	if err != nil {
-		kv.warn(fmt.Sprintf("stopped probing the keys of %s (%s)", t.Name, dbconn.ErrorText(err)))
+		kv.fail(fmt.Sprintf("stopped probing the keys of %s (%s)", t.Name, dbconn.ErrorText(err)))
 	}
 	before := maps.Clone(kv.read) // without primary keys, rows of these keys can't be told apart
 	for i, l := range lookups {
@@ -659,14 +746,18 @@ func (kv *kvRead) sampleKV(ctx context.Context, sm *sample.Sampler, sess *dbconn
 		}
 	}
 	sort.Strings(kv.keys)
+	if kv.guard(meta) {
+		return
+	}
 	facts := factsOf(t, meta, sess, opts)
 	kv.warn(fmt.Sprintf("the keys of %s were sampled, not listed (%s): only the keys in %d sampled rows and those presets know were checked",
 		t.Name, sampleReason(facts, b, kv), rows))
 	kv.probe(ctx, sm, t, meta, keyCol, valueCol, valueLenOf(sm, t, meta), facts, opts, b)
 }
 
-// analyzeKV judges every key and family of a key/value table.
-func analyzeKV(t *model.Table, s *sample.Sample, meta *preset.MetaTable, kv *kvRead) []model.Finding {
+// analyzeKV judges every key and family of a key/value table. hidden counts
+// the keys shown as HiddenKey that hold confident findings.
+func analyzeKV(t *model.Table, s *sample.Sample, meta *preset.MetaTable, kv *kvRead) (out []model.Finding, hidden int) {
 	// Values from whole reads, lookups and probes win over the window's
 	// copy of the same row, which is cut shorter. Without a primary key to
 	// tell rows apart, the window adds nothing to keys read another way.
@@ -732,9 +823,8 @@ func analyzeKV(t *model.Table, s *sample.Sample, meta *preset.MetaTable, kv *kvR
 	}
 	setting := meta.Settings || t.KeyIndex(meta.Key).Unique
 	words := detect.Tokens(t.Name)
-	var out []model.Finding
 	for _, sub := range kv.subjects {
-		p := detect.NewProfileNamed(sub.label)
+		p := detect.NewProfileNamed(sub.label).WithContext(words)
 		sampled := false
 		for _, k := range sub.keys {
 			if kv.read[k] {
@@ -758,30 +848,49 @@ func analyzeKV(t *model.Table, s *sample.Sample, meta *preset.MetaTable, kv *kvR
 		ds := detect.Subject{
 			Table: t.Name, Column: meta.Value, MetaKey: sub.shown, Name: sub.label, Context: words,
 			Hint: sub.hint, Sampled: sampled, Skipped: !sampled && sub.skipped,
-			Keys: keys, KeysPartial: partial, Setting: setting,
+			Keys: keys, KeysPartial: partial, Setting: setting, Labels: meta.Labels,
 		}
 		var prof *detect.Profile
 		if sampled {
 			prof = p
 		}
-		out = append(out, detect.Analyze(ds, prof)...)
+		fs := detect.Analyze(ds, prof)
+		if sub.shown == detect.HiddenKey {
+			// The words a rule matched are words of the key, which isn't
+			// shown; a path's are words of the path, which is.
+			for i := range fs {
+				if fs[i].Path != "" {
+					continue
+				}
+				for j, r := range fs[i].Reasons {
+					if strings.HasPrefix(r, "name contains ") {
+						fs[i].Reasons[j] = "the key's name matches a naming rule"
+					}
+				}
+			}
+			if slices.ContainsFunc(fs, func(f model.Finding) bool { return f.Confidence > model.ConfidenceLow }) {
+				hidden += max(len(sub.keys), 1)
+			}
+		}
+		out = append(out, fs...)
 		if sub.family != nil && sub.family.Carries != "" {
 			out = append(out, detect.KeyNameFinding(t.Name, meta.Key, sub.shown, sub.family, partial))
 		}
 	}
-	return out
+	return out, hidden
 }
 
 // skippedSummary counts the keys a limit left without values, and how
-// many of them match a naming rule. Keys the window sampled don't count.
-func skippedSummary(t *model.Table, kv *kvRead) (skipped, named int) {
+// many of them match a naming rule. Keys the window sampled don't count,
+// and a translation table's keys never match.
+func skippedSummary(t *model.Table, meta *preset.MetaTable, kv *kvRead) (skipped, named int) {
 	words := detect.Tokens(t.Name)
 	for _, s := range kv.subjects {
 		if !s.skipped || slices.ContainsFunc(s.keys, func(k string) bool { return kv.read[k] }) {
 			continue
 		}
 		skipped += len(s.keys)
-		if detect.MatchName(detect.Tokens(s.label), words, detect.TypeString) != nil {
+		if !meta.Labels && detect.MatchName(detect.NameWords(s.label), words, detect.TypeString) != nil {
 			named += len(s.keys)
 		}
 	}

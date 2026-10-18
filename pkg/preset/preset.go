@@ -45,6 +45,13 @@ type MetaTable struct {
 	// Primary marks the tables of the main site and the shared ones; a
 	// scan spends its budgets on them first.
 	Primary bool
+	// Labels marks a translation table found without a preset: its keys
+	// name UI strings, so only their values are judged.
+	Labels bool
+	// Guard marks a key/value table found without a preset by a shape data
+	// tables can have too. Its keys must read as identifiers or labels; a
+	// table keyed by people's names is judged as a plain table instead.
+	Guard bool
 }
 
 // Hint returns what the preset knows about one key.

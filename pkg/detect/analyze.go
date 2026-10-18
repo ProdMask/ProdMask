@@ -45,6 +45,9 @@ type Subject struct {
 	// Skipped marks a key left without values by a sampling limit; name
 	// matches on it stay weak.
 	Skipped bool
+	// Labels marks a key of a translation table: it names a UI string, not
+	// a field, so only its values are judged.
+	Labels bool
 }
 
 // maxPathFindings caps the findings reported for paths inside one column.
@@ -65,21 +68,22 @@ func Analyze(sub Subject, p *Profile) []model.Finding {
 	if sub.DataType != "" {
 		tc = classOf(sub.DataType)
 	}
-	tokens := Tokens(sub.Name)
+	tokens := NameWords(sub.Name)
 	var nm *NameMatch
 	source := "name"
-	if hint != nil {
+	switch {
+	case hint != nil:
 		nm = &NameMatch{Category: hint.Category, Severity: hint.Severity, Note: hint.Note}
 		source = hint.Source
-	} else {
+	case !sub.Labels:
 		nm = MatchName(tokens, sub.Context, tc)
 	}
 	base := model.Finding{Table: sub.Table, Column: sub.Column, MetaKey: sub.MetaKey,
 		Keys: sub.Keys, KeysPartial: sub.KeysPartial, Where: sub.Where}
-	st := state{sampled: sub.Sampled, setting: sub.Setting, skipped: sub.Skipped}
+	st := state{sampled: sub.Sampled, setting: sub.Setting, skipped: sub.Skipped, table: sub.Context, tc: tc}
 	out := judge(base, nm, source, tokens, p, st, hint)
 	if p != nil && len(p.Paths) > 0 {
-		paths := judgePaths(base, sub.Context, p)
+		paths := judgePaths(base, sub.Context, Tokens(sub.Name), p)
 		// When the values are mostly JSON or serialized data, the paths
 		// say more than the column name; keep only what a preset knows.
 		if len(paths) > 0 && hint == nil && p.Structured*2 >= p.NonEmpty {
@@ -147,11 +151,16 @@ func better(a, b model.Finding) bool {
 	return a.Confidence > b.Confidence
 }
 
-// state is what judge needs to know about how the values were read.
+// state is what judge needs to know about how the values were read, and
+// where the subject sits.
 type state struct {
 	sampled bool // values were read
 	setting bool // a single-value setting
 	skipped bool // values were left unread by a sampling limit
+	path    bool // a path inside a JSON or serialized value
+	table   []string
+	near    []string // for a path: the words of its column or meta key, and of the keys above it
+	tc      typeClass
 }
 
 // Categories judged by name alone that numbers or code identifiers cannot be.
@@ -200,6 +209,8 @@ func support(nm *NameMatch, p *Profile) (int, bool) {
 		return p.Hash + p.HexDigest, true
 	case model.CatUserAgent:
 		return p.UserAgent, true
+	case model.CatDeviceID:
+		return p.Opaque, true
 	case model.CatBankAccount:
 		if nm.Words == "iban" {
 			return p.IBAN, true
@@ -268,6 +279,21 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		} else {
 			f.Reasons = []string{"known field (" + strings.TrimPrefix(source, "preset:") + " preset)"}
 		}
+		// A day, month or year of birth on its own, in a number column or
+		// as whole numbers: a fake date wouldn't fit, so the parts are
+		// emptied together. So is a whole date stored as a number, such as
+		// YYYYMMDD or a Unix time.
+		numeric := nm.Category == model.CatDateOfBirth && hint == nil &&
+			(st.tc&tInt != 0 || (p != nil && p.Whole > 0 && p.Whole == p.NonEmpty))
+		part := numeric && (p == nil || p.MaxDigits <= 4)
+		switch {
+		case part:
+			f.Mask = "null"
+			f.Note = appendNote(f.Note, "one part of a split birth date: mask the day, month and year together")
+		case numeric:
+			f.Mask = "null"
+			f.Note = appendNote(f.Note, "a birth date stored as a number, which a fake date wouldn't fit")
+		}
 		label := nm.Category.Label()
 		switch {
 		case nm.Category == model.CatFreeText && st.sampled && (p == nil || p.NonEmpty == 0):
@@ -287,6 +313,9 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			}
 		default:
 			f.Sampled = p.NonEmpty
+			if hint == nil && nm.Password && judgePassword(&f, nm, tokens, p, st) {
+				break
+			}
 			m, checkable := support(nm, p)
 			if checkable {
 				f.Matched = m
@@ -323,10 +352,16 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 				case textual[nm.Category] && ratio(p.CodeLike, p.NonEmpty) >= 0.5:
 					f.Confidence = model.ConfidenceLow
 					f.Note = appendNote(f.Note, "sampled values look like code identifiers")
+				case textual[nm.Category] && nm.Category != model.CatWebsite && ratio(p.URL, p.NonEmpty) >= 0.5:
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values look like URLs or paths")
+				case textual[nm.Category] && ratio(p.Crypto, p.NonEmpty) >= 0.5:
+					f.Confidence = model.ConfidenceLow
+					f.Note = appendNote(f.Note, "sampled values look like cryptocurrency addresses")
 				case labelLike(nm.Category, p):
 					f.Confidence = model.ConfidenceLow
 					f.Note = appendNote(f.Note, "sampled values look like field names, placeholders or flags")
-				case needsDigits[nm.Category] > 0 && p.leafMaxDigits() < needsDigits[nm.Category]:
+				case needsDigits[nm.Category] > 0 && !part && p.leafMaxDigits() < needsDigits[nm.Category]:
 					f.Confidence = model.ConfidenceLow
 					f.Note = appendNote(f.Note, "sampled values have too few digits for a "+label)
 				}
@@ -342,6 +377,7 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 
 	keysLeaf := strings.HasSuffix(base.Path, keysPath)
 	ident := named >= 0 && identity[out[named].Category]
+	before := len(out)
 	for _, c := range valueChecks {
 		n := c.n(p)
 		if named >= 0 && out[named].Category == c.cat {
@@ -391,6 +427,7 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		}
 		out = append(out, f)
 	}
+	valueFound := len(out) > before
 
 	for i := range out {
 		refine(&out[i], p)
@@ -439,6 +476,10 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		}
 	}
 
+	// Messages between people: prose is enough, since names and addresses
+	// typed into them can't be detected.
+	messages := nm != nil && nm.Messages && named >= 0 && out[named].Category == model.CatFreeText
+	prose := p.Spaced >= 3 && ratio(p.Spaced, p.NonEmpty) >= 0.3
 	embedded := p.TextEmail + p.TextPhone + p.TextCard + p.TextIP
 	switch {
 	case p.Text > 0 && embedded > 0:
@@ -473,6 +514,9 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			f.Note = appendNote(f.Note, note)
 		} else if named >= 0 && out[named].Category == model.CatFreeText {
 			f := &out[named]
+			if messages {
+				conf = max(conf, model.ConfidenceMedium)
+			}
 			f.Confidence, f.Severity = conf, max(f.Severity, sev)
 			f.Matched = top
 			f.Source += "+value"
@@ -489,11 +533,95 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			f.Note = note
 			out = append(out, f)
 		}
+	case messages && prose:
+		out[named].Confidence = model.ConfidenceMedium
+		out[named].Note = appendNote(out[named].Note, "messages between people: names and addresses typed into them can't be detected")
 	case named >= 0 && out[named].Category == model.CatFreeText:
+		// Emails inside values may raise it again below.
 		out[named].Confidence = model.ConfidenceLow
-		out[named].Note = appendNote(out[named].Note, "no personal data spotted in the sampled text")
+		if p.Inline == 0 {
+			out[named].Note = appendNote(out[named].Note, nothingSpotted)
+		}
+	}
+
+	if p.Inline > 0 {
+		out = inlineEmails(out, base, p)
+	}
+
+	// A column of identifiers of more than one kind, such as a ban list of
+	// email and IP addresses, which no single value check reports.
+	kinds := 0
+	for _, n := range []int{p.Email, p.IP, p.PhoneStrict} {
+		if n > 0 {
+			kinds++
+		}
+	}
+	if !valueFound && kinds >= 2 && p.NonEmpty >= 2 && p.Email+p.IP+p.PhoneStrict == p.NonEmpty {
+		const reason = "every sampled value is an email address, an IP address or a phone number"
+		switch {
+		case named < 0:
+			f := base
+			f.Category = model.CatFreeText
+			f.Severity, f.Confidence = model.SeverityMedium, model.ConfidenceMedium
+			f.Mask = model.CatFreeText.Info().Mask
+			f.Source = "value"
+			f.Sampled, f.Matched = p.NonEmpty, p.NonEmpty
+			f.Reasons = []string{reason}
+			out = append(out, f)
+		case out[named].Category == model.CatFreeText:
+			f := &out[named]
+			f.Confidence = max(f.Confidence, model.ConfidenceMedium)
+			f.Matched = p.NonEmpty
+			if !strings.Contains(f.Source, "value") {
+				f.Source += "+value"
+			}
+			f.Reasons = append(f.Reasons, reason)
+			f.Note = dropNote(f.Note, nothingSpotted)
+		}
 	}
 	return lowIsLow(out)
+}
+
+// nothingSpotted is the note on free text whose sampled values show no
+// personal data.
+const nothingSpotted = "no personal data spotted in the sampled text"
+
+// dropNote removes one part from a note that appendNote built.
+func dropNote(note, part string) string {
+	parts := strings.Split(note, "; ")
+	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == part }), "; ")
+}
+
+// inlineEmails reports values that carry email addresses inside them, such
+// as URLs with an address in their query string, as free text: on a free
+// text finding already there, or on a new one.
+func inlineEmails(out []model.Finding, base model.Finding, p *Profile) []model.Finding {
+	conf := model.ConfidenceLow
+	switch r := ratio(p.Inline, p.NonEmpty); {
+	case r >= 0.2:
+		conf = model.ConfidenceHigh
+	case r >= 0.05 || p.Inline >= 3:
+		conf = model.ConfidenceMedium
+	}
+	reason := fmt.Sprintf("%d of %d sampled values have email addresses inside, such as in URLs", p.Inline, p.NonEmpty)
+	if i := slices.IndexFunc(out, func(f model.Finding) bool { return f.Category == model.CatFreeText }); i >= 0 {
+		f := &out[i]
+		f.Confidence = max(f.Confidence, conf)
+		f.Matched = max(f.Matched, p.Inline)
+		if !strings.Contains(f.Source, "value") {
+			f.Source += "+value"
+		}
+		f.Reasons = append(f.Reasons, reason)
+		return out
+	}
+	f := base
+	f.Category = model.CatFreeText
+	f.Severity, f.Confidence = model.SeverityMedium, conf
+	f.Mask = model.CatFreeText.Info().Mask
+	f.Source = "value"
+	f.Sampled, f.Matched = p.NonEmpty, p.Inline
+	f.Reasons = []string{reason}
+	return append(out, f)
 }
 
 // labelLike reports whether sampled values name fields rather than hold
@@ -545,7 +673,9 @@ func refine(f *model.Finding, p *Profile) {
 			f.Note = appendNote(f.Note, "addresses use reserved example/test domains; this looks masked already")
 		}
 	case model.CatPasswordHash:
-		if len(p.HashFormats) > 0 {
+		if len(p.HashFormats) > 0 && !slices.ContainsFunc(f.Reasons, func(r string) bool {
+			return strings.HasPrefix(r, "hash formats: ")
+		}) {
 			var fs []string
 			for name, n := range p.HashFormats {
 				fs = append(fs, fmt.Sprintf("%s %d", name, n))
@@ -570,7 +700,11 @@ func modeSummary(c *SecretCount) string {
 	return strings.Join(parts, ", ")
 }
 
-func judgePaths(base model.Finding, ctx []string, p *Profile) []model.Finding {
+// judgePaths judges the paths inside a column's or key's JSON or serialized
+// values. A path's name is judged in the context of the table's words
+// (ctx), the words of the column or key holding it (field), and the keys
+// above it, so updraft_ftp's settings.*.pass sees ftp.
+func judgePaths(base model.Finding, ctx, field []string, p *Profile) []model.Finding {
 	var out []model.Finding
 	for _, name := range p.PathNames() {
 		sub := p.Paths[name]
@@ -582,18 +716,19 @@ func judgePaths(base model.Finding, ctx []string, p *Profile) []model.Finding {
 		var (
 			nm     *NameMatch
 			tokens []string
+			near   = append([]string(nil), field...)
 		)
 		if last >= 0 {
-			tokens = Tokens(keys[last])
-			pathCtx := append([]string(nil), ctx...)
+			tokens = NameWords(keys[last])
 			for _, k := range keys[:last] {
-				pathCtx = append(pathCtx, Tokens(k)...)
+				near = append(near, Tokens(k)...)
 			}
-			nm = MatchName(tokens, pathCtx, tStr|tJSON)
+			nm = MatchName(tokens, append(append([]string(nil), ctx...), near...), tStr|tJSON)
 		}
 		b := base
 		b.Path = name
-		for _, f := range judge(b, nm, "name", tokens, sub, state{sampled: true}, nil) {
+		st := state{sampled: true, path: true, table: ctx, near: near, tc: tStr | tJSON}
+		for _, f := range judge(b, nm, "name", tokens, sub, st, nil) {
 			if f.Confidence > model.ConfidenceLow {
 				out = append(out, f)
 			}

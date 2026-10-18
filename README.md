@@ -5,9 +5,10 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
 `prodmask scan` connects read-only and samples a few hundred rows per table. It reports:
 
 - **Personal data and secrets:**
-  - emails, phone numbers, addresses, names, dates of birth, national and tax IDs;
-  - IBANs, card numbers, password hashes;
-  - API keys (Stripe, AWS, SendGrid, GitHub and more), including inside JSON and PHP-serialized values.
+  - emails, phone numbers, addresses, names, dates of birth, national and tax IDs, device and hardware IDs;
+  - IBANs, card numbers, password hashes, and passwords stored as plain text;
+  - API keys (Stripe, AWS, SendGrid, GitHub and more), including inside JSON and PHP-serialized values;
+  - email addresses inside URLs, and messages people send each other, such as private messages and notifications.
 - **What staging would do to real people:**
   - payment gateways in live mode;
   - mail settings that reach real inboxes;
@@ -58,7 +59,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |
-| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found |
+| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. Severities can rise between versions: v0.4.0 rates passwords stored as plain text critical |
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
@@ -85,7 +86,7 @@ prodmask scan --dsn "$STAGING_DSN" --fail-on high --format markdown --out prodma
 - **Queries:**
   - every sampling query is a `SELECT` with a `LIMIT`, ordered by primary key where there is one; key/value lookups (below) have a `LIMIT` per key instead;
   - text values are cut to 4,096 characters on the server, and settings to 65,536;
-  - binary columns are skipped;
+  - binary columns are skipped, except binary columns of up to 16 bytes named like IP addresses: those are read as hex in the same sampling query and decoded in memory, and their values are never shown;
   - row counts come from `information_schema` estimates.
 - **Key/value tables** (`wp_options`, `wp_postmeta`, Magento EAV and the like) are read key by key where they can be, so a key on only a few rows is still seen:
   - **Small tables:** a table of up to 20,000 rows and 32 MB is read once.
@@ -94,6 +95,15 @@ prodmask scan --dsn "$STAGING_DSN" --fail-on high --format markdown --out prodma
   - **Bigger tables**, and tables whose keys can't be listed, are sampled, 3,000 rows each, plus lookups for the keys the platform presets know. Without an index on the key column, those lookups are one pass over the table, run only when the table is small or the server enforces the statement timeout.
   - **Budgets:** a scan looks up at most 3,000 keys and reads at most 32 MB of values per table, and 30,000 keys, 256 MB of values and 1 GB of full-scan listings and passes in all, the main site's tables first.
   - **What's left out:** keys past these limits, or past the first 200,000 of a table, are judged by name only, and a warning says so. In a sampled table, keys outside the sample that no preset knows aren't seen.
+  - **Without a preset,** a table counts as a key/value table when it has one of these shapes. It's then read the same way: whole, by listing and looking up its keys, or from a 3,000-row window when it's too large for both.
+    - `key`/`value`, `meta_key`/`meta_value`, `option_name`/`option_value`, `setting_key`/`setting_value` or `config_key`/`config_value`;
+    - `name`/`value`, `path`/`value` or `param`/`value`, when the table's name has a settings word such as `settings` or `options`;
+    - any `X_key` beside an `X_value`;
+    - an `X_name` beside a text `X_value`, when X names settings or fields, as in `setting_name` or `field_name`, or when the table's name has a settings word.
+
+    An X that names people (`member_name`, `user_key`) or data (`customer_name`, `license_key`) keeps the table plain. Except for the shapes that need a settings word, the keys must read as identifiers or labels. Keys with a space that don't read as labels may be names. This check runs before any key is looked up:
+    - a table keyed by people's names is judged as a plain table instead. Unless it's a translation table, or the column has a finding of its own, its key column gets a low-confidence finding: the starter config suggests hashing it, commented out;
+    - the other keys that may be names are shown as `(key hidden)`.
 - **Small extra checks:**
   - a few queries on indexed columns look for pending jobs, active webhooks, scheduled WordPress events, plugin email settings and Contact Form 7 forms;
   - some lookups (`IN` lists of up to 100 sampled IDs) verify inferred relationships.
@@ -118,7 +128,7 @@ The report warns when the user it runs as could change the database.
 - the inferred relationships;
 - the settings to neutralise.
 
-Weak matches appear commented out. The file's header explains patterns and paths. Review every line: the config is a starting point, not a guarantee.
+Weak matches appear commented out, and so do suggestions such as emptying a table that looks like a cache. Keys shown as `(key hidden)` get no rule; a comment says what they hold, and their values stay as they are until you add rules for them. The file's header explains patterns and paths. Review every line: the config is a starting point, not a guarantee.
 
 ## Development
 
@@ -126,11 +136,13 @@ Weak matches appear commented out. The file's header explains patterns and paths
 go test ./...
 ```
 
-The integration tests build fake WordPress/WooCommerce, Magento 2 and Laravel databases and scan them. They run when `PRODMASK_TEST_DSN` points at a server where the user can create databases:
+The integration tests build fake WordPress/WooCommerce, Magento 2 and Laravel databases, plus a generic schema no preset knows, and scan them. They run when `PRODMASK_TEST_DSN` points at a server where the user can create databases:
 
 ```bash
 PRODMASK_TEST_DSN='root:…@tcp(127.0.0.1:3306)/' go test ./...
 ```
+
+Their findings are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line.
 
 The scanner engine lives in importable packages under `github.com/ProdMask/ProdMask/pkg/...`. The command line is `pkg/cli`, which other builds can add commands to; `cmd/prodmask` is a thin main on top.
 

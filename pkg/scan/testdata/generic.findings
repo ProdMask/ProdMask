@@ -1,0 +1,60 @@
+admin	email				email	high	high	fake_email
+admin	name				person_name	medium	medium	fake_name
+admin	pass				password_hash	high	high	staging_password
+admin	salt				secret	high	medium	null
+admin_login_logs	admin_post_details		newpass		secret	critical	high	null
+admin_login_logs	admin_post_details		password		secret	critical	high	null
+admin_login_logs	admin_post_details		set_password		secret	critical	high	null
+admin_login_logs	admin_post_details		username		username	medium	medium	fake_username
+admin_login_logs	admin_username				username	medium	medium	fake_username
+banfilters	ban_content				free_text	medium	medium	redact
+cache_store	cs_value	settings	email_in		email	high	high	fake_email
+contacts	contact_name				person_name	medium	medium	fake_name
+contacts	contact_value				phone	high	high	fake_phone
+customers	customer_name				person_name	medium	medium	fake_name
+customers	customer_value				email	high	high	fake_email
+donations	data		callback_url		free_text	medium	high	redact
+form_entries	field_value	(key hidden)			phone	high	high	fake_phone
+form_entries	field_value	Date of birth			date_of_birth	high	medium	fake_date
+form_entries	field_value	Emergency contact			phone	high	high	fake_phone
+form_entries	field_value	Gift message			free_text	low	low	redact
+form_entries	field_value	Phone number			phone	high	high	fake_phone
+form_entries	field_value	VAT number			national_id	high	medium	hash
+game_logs	summonername				username	medium	medium	fake_username
+inline_notifications	notify_text				free_text	medium	medium	redact
+kv	key				person_name	low	low	hash
+kv	value				phone	high	high	fake_phone
+member_settings	member_value				email	high	high	fake_email
+members	bday_day				date_of_birth	high	medium	null
+members	bday_month				date_of_birth	high	medium	null
+members	bday_year				date_of_birth	high	medium	null
+members	email				email	high	high	fake_email
+members	hwid				device_id	medium	high	hash
+members	ip_hash				ip_address	medium	medium	fake_ip
+members	lastip				ip_address	medium	high	fake_ip
+members	member_login_key				secret	high	medium	null
+members	members_display_name				person_name	medium	medium	fake_name
+members	members_pass_hash				password_hash	high	high	staging_password
+members	members_pass_salt				secret	high	medium	null
+members	members_seo_name				username	medium	medium	fake_username
+members	name				person_name	medium	medium	fake_name
+members	poster_ip				ip_address	medium	high	fake_ip
+members	regip				ip_address	medium	high	fake_ip
+message_topics	mt_title				free_text	medium	medium	redact
+paypal_ipn	ipn_data		address_city		city	medium	medium	fake_city
+paypal_ipn	ipn_data		address_country		country	low	medium	keep
+paypal_ipn	ipn_data		address_country_code		country	low	medium	keep
+paypal_ipn	ipn_data		address_name		person_name	medium	medium	fake_name
+paypal_ipn	ipn_data		address_state		region	low	medium	keep
+paypal_ipn	ipn_data		address_street		address	high	medium	fake_street
+paypal_ipn	ipn_data		address_zip		postcode	medium	medium	fake_postcode
+paypal_ipn	ipn_data		first_name		person_name	medium	medium	fake_first_name
+paypal_ipn	ipn_data		last_name		person_name	medium	medium	fake_last_name
+paypal_ipn	ipn_data		payer_email		email	high	high	fake_email
+setting	value	company_address_1			address	high	medium	fake_street
+setting	value	company_email			email	high	high	fake_email
+setting	value	company_name			company	low	medium	fake_company
+setting	value	company_note			free_text	low	low	redact
+setting	value	company_tel			phone	high	high	fake_phone
+settings	setting_value	admin_email			email	high	high	fake_email
+settings	setting_value	smtp_password			secret	critical	high	null

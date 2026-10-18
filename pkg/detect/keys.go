@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/ProdMask/ProdMask/pkg/model"
 )
@@ -432,4 +433,75 @@ func withArticle(s string) string {
 		return "an " + s
 	}
 	return "a " + s
+}
+
+// Words that end a key naming a field (Your Name, Emergency contact), and
+// short words that say nothing on their own.
+var (
+	labelWords    = words("name names email phone address line number message contact date time code notes")
+	keyStopWords  = words("of for e x no me")
+	keyKnownWords = func() map[string]bool {
+		m := map[string]bool{}
+		for _, set := range []map[string]bool{ruleWords, fieldWords, labelWords} {
+			for w := range set {
+				m[w] = true
+			}
+		}
+		return m
+	}()
+)
+
+// KeyWords is how the key-shape guard of a key/value table found without a
+// preset reads a stored key with a space in it.
+type KeyWords struct {
+	// Label says the key names a field: at most one of its words is
+	// unknown, and it ends in a label word or has a lower-case word the
+	// rules or field names use. Date of birth and shipping method are
+	// labels; Jane Doe phone, John Street and Next of kin aren't.
+	Label   bool
+	Known   []string // its words the rules, field names and labels use, lower case, in order
+	Unknown int      // its other words, numbers aside
+}
+
+// ReadKey reads a stored key for the key-shape guard.
+func ReadKey(key string) KeyWords {
+	var kw KeyWords
+	ws := NameWords(key)
+	for _, w := range ws {
+		switch {
+		case isDigits(w):
+		case keyKnownWords[w]:
+			kw.Known = append(kw.Known, w)
+		default:
+			kw.Unknown++
+		}
+	}
+	// The last word decides, before a trailing number: Phone 2 is a label.
+	last := len(ws) - 1
+	for last >= 0 && isDigits(ws[last]) {
+		last--
+	}
+	signal := last >= 0 && labelWords[ws[last]]
+	// Rule words count only as written in lower case, so a surname such as
+	// Street or Pan doesn't make a person's name a label; nor does a number,
+	// as in Jane 2 or jane2.
+	for _, raw := range strings.FieldsFunc(key, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		if signal || raw != strings.ToLower(raw) || isDigits(raw) {
+			continue
+		}
+		for _, w := range NameWords(raw) {
+			if !isDigits(w) && (ruleWords[w] || fieldWords[w]) && !keyStopWords[w] {
+				signal = true
+			}
+		}
+	}
+	kw.Label = kw.Unknown <= 1 && signal
+	return kw
+}
+
+// FreeTextKey reports whether a key, as reports would show it, has a space
+// and doesn't read as a label. In a key/value table found without a
+// preset, such a key may be a person's name, so it isn't shown.
+func FreeTextKey(key string) bool {
+	return strings.Contains(Template(key).Pattern, " ") && !ReadKey(key).Label
 }

@@ -6,6 +6,7 @@ package scan
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -80,7 +81,7 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 	res.SideEffects = pr.SideEffects
 	res.Warnings = append(res.Warnings, pr.Warnings...)
 
-	sampler := &sample.Sampler{DB: sess.DB, MaxValueLen: opts.MaxValueLen, Timeout: queryTimeout}
+	sampler := &sample.Sampler{DB: sess.DB, MaxValueLen: opts.MaxValueLen, Timeout: queryTimeout, Hex: hexColumn(pr)}
 	ids := infer.NewIDValues()
 
 	metas := map[string]*preset.MetaTable{}
@@ -128,24 +129,17 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 			s  *sample.Sample
 			kv *kvRead
 		)
+		var keyNames *model.Finding
 		if opts.Samples {
-			limit := opts.SampleRows
 			if meta != nil {
 				kv = readKV(ctx, sess, sampler, t, meta, opts, b)
-				// Lookups read each key's oldest rows; the window adds the
-				// middle and newest ones for keys on many rows, such as a
-				// nickname every user has. A whole read needs no window
-				// for its values.
-				if kv.mode != modeWhole {
-					limit = opts.MetaSampleRows
-				}
 			}
-			s, err = sampler.Table(ctx, t, limit)
+			s, err = sampler.Table(ctx, t, windowRows(opts, kv))
 			if err != nil {
 				ts.Error = dbconn.ErrorText(err)
 				res.Warnings = append(res.Warnings, fmt.Sprintf("could not sample %s: %s", t.Name, ts.Error))
 			}
-			if kv != nil && kv.mode == modeSample {
+			if kv != nil && kv.mode == modeSample && !kv.demoted {
 				kv.sampleKV(ctx, sampler, sess, t, meta, s, opts, b)
 			}
 			if s != nil {
@@ -154,21 +148,52 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 			}
 			if kv != nil {
 				ts.RowsSampled += kv.rows
-				res.Warnings = append(res.Warnings, kv.warnings...)
+				if kv.demoted {
+					// Keyed by data, such as people's names: judged as a
+					// plain table, whose key column may hold the names.
+					// Failed statements are still reported.
+					res.Warnings = append(res.Warnings, kv.failures()...)
+					keyNames = demotedKeyFinding(t, meta, kv)
+					meta, kv = nil, nil
+					ts.Kind, ts.KeyColumn, ts.ValueColumn = "table", "", ""
+				} else {
+					res.Warnings = append(res.Warnings, kv.warnings...)
+				}
+			}
+			if ts.Action == "" && cacheTable(t) && holdsText(s, kv) {
+				ts.PossibleAction = "truncate"
+				ts.PossibleActionReason = "looks like a cache: applications rebuild their caches, so emptying the copy's " +
+					"is usually safe; check that this one is rebuilt"
 			}
 		}
 
 		var findings []model.Finding
 		if kv != nil {
-			findings = analyzeKV(t, s, meta, kv)
+			var hidden int
+			findings, hidden = analyzeKV(t, s, meta, kv)
 			ts.Keys = len(kv.keys)
-			if n, named := skippedSummary(t, kv); n > 0 {
+			if n, named := skippedSummary(t, meta, kv); n > 0 {
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s were not sampled (limits: %d keys and %d MB per table, "+
 					"%d keys and %d MB per scan); %d of them match names and are listed at low confidence in the JSON report",
 					n, t.Name, tableKeys, tableBytes>>20, scanKeys, scanBytes>>20, named))
 			}
+			switch {
+			case hidden == 1:
+				ts.HiddenKeys = hidden
+				res.Warnings = append(res.Warnings, fmt.Sprintf("1 key of %s holds findings but isn't shown, since its name "+
+					"may hold personal data; the starter config has no rule for it", t.Name))
+			case hidden > 1:
+				ts.HiddenKeys = hidden
+				res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s hold findings but aren't shown, since their names "+
+					"may hold personal data; the starter config has no rules for them", hidden, t.Name))
+			}
 		}
 		findings = append(findings, analyzeColumns(t, s, pr, meta)...)
+		if keyNames != nil && !slices.ContainsFunc(findings, func(f model.Finding) bool {
+			return f.Column == keyNames.Column && f.Confidence > model.ConfidenceLow
+		}) {
+			findings = append(findings, *keyNames)
+		}
 		if opts.Samples {
 			fs, warns := rowSubjects(ctx, sampler, t, pr)
 			findings = append(findings, fs...)
@@ -194,11 +219,117 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 	rels, warns := infer.Verify(ctx, sess.DB, ids, schema, inf.Relationships(), queryTimeout)
 	res.Relationships = rels
 	res.Warnings = append(res.Warnings, warns...)
+	weakenDeviceReferences(res, schema)
 
 	detect.SortFindings(res.Findings)
 	sortRelationships(res.Relationships)
 	summarize(res, time.Since(start))
 	return res, nil
+}
+
+// hexColumn picks the columns the sampler reads as hex: short binary
+// columns named like IP addresses, decoded in memory. A preset's column is
+// judged as the preset says.
+func hexColumn(pr *preset.Result) func(t *model.Table, c *model.Column) bool {
+	return func(t *model.Table, c *model.Column) bool {
+		return pr.ColumnHint(t.Name, c.Name) == nil && detect.BinaryIPColumn(t.Name, c.Name)
+	}
+}
+
+// windowRows is how many rows a table's sample reads. Lookups read each
+// key's oldest rows; the window adds the middle and newest ones for keys on
+// many rows, such as a nickname every user has. A whole read needs no
+// window for its values, nor does a table keyed by data.
+func windowRows(opts Options, kv *kvRead) int {
+	if kv != nil && kv.mode != modeWhole && !kv.demoted {
+		return opts.MetaSampleRows
+	}
+	return opts.SampleRows
+}
+
+var cacheWords = wordSet("cache caches")
+
+// cacheTable reports whether a table's name says it is a cache.
+func cacheTable(t *model.Table) bool {
+	return anyWord(detect.Tokens(t.Name), cacheWords)
+}
+
+// holdsText reports whether a table's sample, or its key/value reads, hold
+// at least one filled text value.
+func holdsText(s *sample.Sample, kv *kvRead) bool {
+	if s != nil {
+		for i, c := range s.Columns {
+			if !sample.IsText(c) {
+				continue
+			}
+			for _, r := range s.Rows {
+				if r[i].Valid && strings.TrimSpace(r[i].String) != "" {
+					return true
+				}
+			}
+		}
+	}
+	if kv != nil {
+		for _, rows := range kv.values {
+			for _, r := range rows {
+				if !r.Null && strings.TrimSpace(r.Value) != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// weakenDeviceReferences lowers a device ID found on a column that a
+// declared or confirmed relationship joins to a parent's primary key named
+// id or uuid: such a column most likely references a devices table, as
+// user_id does users. The tables' counts are redone.
+func weakenDeviceReferences(res *model.Result, schema *model.Schema) {
+	parents := map[string]string{}
+	for _, r := range res.Relationships {
+		if (r.Status != model.RelDeclared && r.Status != model.RelConfirmed) || len(r.ChildColumns) != 1 ||
+			len(r.ParentColumns) != 1 {
+			continue
+		}
+		if p := strings.ToLower(r.ParentColumns[0]); p != "id" && p != "uuid" {
+			continue
+		}
+		if pt := schema.Table(r.ParentTable); pt == nil || pt.SinglePK() == nil ||
+			!strings.EqualFold(pt.SinglePK().Name, r.ParentColumns[0]) {
+			continue
+		}
+		parents[r.ChildTable+"\x00"+r.ChildColumns[0]] = r.ParentTable + "." + r.ParentColumns[0]
+	}
+	changed := map[string]bool{}
+	for i := range res.Findings {
+		f := &res.Findings[i]
+		parent, ok := parents[f.Table+"\x00"+f.Column]
+		if !ok || f.Category != model.CatDeviceID || f.Confidence == model.ConfidenceLow || f.MetaKey != "" {
+			continue
+		}
+		f.Confidence, f.Severity = model.ConfidenceLow, model.SeverityLow
+		note := "a relationship joins this column to " + parent + ": it's likely a reference; if " + parent +
+			" holds the device IDs themselves, mask both the same way"
+		if f.Note != "" {
+			note = f.Note + "; " + note
+		}
+		f.Note = note
+		changed[f.Table] = true
+	}
+	for i := range res.Tables {
+		ts := &res.Tables[i]
+		if !changed[ts.Name] {
+			continue
+		}
+		ts.Findings, ts.Highest = 0, model.SeverityNone
+		for _, f := range res.Findings {
+			if f.Table == ts.Name && f.Confidence > model.ConfidenceLow {
+				ts.Findings++
+				ts.Highest = max(ts.Highest, f.Severity)
+			}
+		}
+	}
 }
 
 func analyzeColumns(t *model.Table, s *sample.Sample, pr *preset.Result, meta *preset.MetaTable) []model.Finding {
@@ -220,10 +351,16 @@ func analyzeColumns(t *model.Table, s *sample.Sample, pr *preset.Result, meta *p
 		if s != nil {
 			if i := s.Index(c.Name); i >= 0 {
 				sub.Sampled = true
-				p = detect.NewProfileNamed(c.Name)
-				for _, row := range s.Rows {
-					if row[i].Valid {
-						p.Add(row[i].String)
+				p = detect.NewProfileNamed(c.Name).WithContext(words)
+				if s.Hex[i] {
+					if !addBinaryIPs(p, s, i) {
+						sub.Sampled, p = false, nil // nothing decoded: judged as if unread, as before
+					}
+				} else {
+					for _, row := range s.Rows {
+						if row[i].Valid {
+							p.Add(row[i].String)
+						}
 					}
 				}
 			}
@@ -231,6 +368,32 @@ func analyzeColumns(t *model.Table, s *sample.Sample, pr *preset.Result, meta *p
 		out = append(out, detect.Analyze(sub, p)...)
 	}
 	return out
+}
+
+// undecoded stands for a binary value that is no address the scanner
+// knows; it matches no format.
+const undecoded = "(binary)"
+
+// addBinaryIPs adds the decoded values of a binary IP column, read as hex,
+// to a profile. The addresses exist only in memory. It reports whether any
+// value decoded to an address.
+func addBinaryIPs(p *detect.Profile, s *sample.Sample, i int) bool {
+	decoded := false
+	for _, row := range s.Rows {
+		if !row[i].Valid {
+			continue
+		}
+		switch ip, empty, ok := detect.BinaryIP(row[i].String); {
+		case empty:
+			p.Add("")
+		case ok:
+			p.Add(ip)
+			decoded = true
+		default:
+			p.Add(undecoded)
+		}
+	}
+	return decoded
 }
 
 // rowSubjectRows is how many rows a row subject reads.
@@ -266,7 +429,7 @@ func rowSubjects(ctx context.Context, sm *sample.Sampler, t *model.Table, pr *pr
 		if len(vals) == 0 {
 			continue
 		}
-		p := detect.NewProfileNamed(c.Name)
+		p := detect.NewProfileNamed(c.Name).WithContext(words)
 		for _, v := range vals {
 			p.Add(v)
 		}
@@ -280,51 +443,94 @@ func rowSubjects(ctx context.Context, sm *sample.Sampler, t *model.Table, pr *pr
 // Column pairs that make a table a key/value store even without a preset.
 var metaPairs = [][2]string{
 	{"meta_key", "meta_value"}, {"option_name", "option_value"}, {"setting_key", "setting_value"},
-	{"config_key", "config_value"}, {"key", "value"}, {"name", "value"}, {"path", "value"},
+	{"config_key", "config_value"}, {"key", "value"}, {"name", "value"}, {"path", "value"}, {"param", "value"},
 }
+
+// vagueKeys are key columns that say little on their own: their table's
+// name must have a settings word, and their tables get no key-shape guard.
+var vagueKeys = map[string]bool{"name": true, "path": true, "param": true}
 
 var settingsWords = map[string]bool{"meta": true, "metadata": true, "option": true, "options": true,
 	"setting": true, "settings": true, "config": true, "configuration": true, "preference": true,
 	"preferences": true, "property": true, "properties": true, "attribute": true, "attributes": true}
 
+// entryWords end the X of an X_name key column that names settings or form
+// fields, as setting_name and field_name do.
+var entryWords = wordSet("config setting settings option options param params parameter parameters property properties " +
+	"attribute attributes field fields var vars variable variables meta pref prefs preference preferences")
+
+// labelTableWords mark a translation table's name.
+var labelTableWords = wordSet("language languages lang langs translation translations locale locales localization " +
+	"localisation phrase phrases lexicon")
+
+func wordSet(s string) map[string]bool {
+	m := map[string]bool{}
+	for _, w := range strings.Fields(s) {
+		m[w] = true
+	}
+	return m
+}
+
+func anyWord(ws []string, set map[string]bool) bool {
+	for _, w := range ws {
+		if set[w] {
+			return true
+		}
+	}
+	return false
+}
+
 // genericMeta recognises a key/value table without a preset: one of the
-// usual column pairs, or any X_key with an X_value beside it (Ultimate
-// Member's um_key and um_value). Sessions aren't settings, and a pair a
-// preset already describes column by column isn't one either. Binary
-// values are never read, so a pair with one isn't a key/value table.
+// usual column pairs; any X_key with an X_value beside it (Ultimate
+// Member's um_key and um_value); or an X_name with a text X_value, when X
+// names settings or fields. An X keyed by people (member_key, user_name), or
+// an X_key or X_name that names data itself (customer_name, license_key),
+// keeps its columns. Sessions aren't settings, and a pair a preset already
+// describes column by column isn't one either. Binary values are never
+// read, so a pair with one isn't a key/value table.
 func genericMeta(t *model.Table, pr *preset.Result) *preset.MetaTable {
-	words := detect.Tokens(t.Name)
+	tw := detect.Tokens(t.Name)
+	settings := anyWord(tw, settingsWords)
+	lowerName := strings.ToLower(t.Name)
+	labels := !settings && (anyWord(tw, labelTableWords) || strings.Contains(lowerName, "i18n") ||
+		strings.Contains(lowerName, "l10n"))
 	textKey := func(c *model.Column) bool { return c != nil && (c.DataType == "varchar" || c.DataType == "char") }
 	hinted := func(k, v *model.Column) bool {
 		return pr != nil && (pr.ColumnHint(t.Name, k.Name) != nil || pr.ColumnHint(t.Name, v.Name) != nil)
 	}
 	for _, pair := range metaPairs {
 		k, v := t.Column(pair[0]), t.Column(pair[1])
-		if v == nil || !sample.Sampleable(v) || !textKey(k) {
+		if v == nil || !sample.Sampleable(v) || !textKey(k) || (vagueKeys[pair[0]] && !settings) {
 			continue
 		}
-		if pair[0] == "name" || pair[0] == "path" {
-			ok := false
-			for _, w := range words {
-				ok = ok || settingsWords[w]
-			}
-			if !ok {
-				continue
-			}
-		}
-		return &preset.MetaTable{Key: k.Name, Value: v.Name}
+		return &preset.MetaTable{Key: k.Name, Value: v.Name, Labels: labels, Guard: !vagueKeys[pair[0]]}
 	}
 	for _, k := range t.Columns {
 		lower := strings.ToLower(k.Name)
-		if !strings.HasSuffix(lower, "_key") || !textKey(k) {
+		var base string
+		switch {
+		case strings.HasSuffix(lower, "_key"):
+			base = k.Name[:len(k.Name)-len("_key")]
+		case strings.HasSuffix(lower, "_name"):
+			base = k.Name[:len(k.Name)-len("_name")]
+		default:
 			continue
 		}
-		base := k.Name[:len(k.Name)-len("_key")]
 		v := t.Column(base + "_value")
-		if v == nil || !sample.Sampleable(v) || strings.EqualFold(base, "session") || hinted(k, v) {
+		if !textKey(k) || v == nil || !sample.Sampleable(v) || strings.EqualFold(base, "session") || hinted(k, v) {
 			continue
 		}
-		return &preset.MetaTable{Key: k.Name, Value: v.Name}
+		bw := detect.Tokens(base)
+		if len(bw) == 0 || detect.PeopleWord(bw[len(bw)-1]) {
+			continue
+		}
+		if m := detect.MatchName(detect.NameWords(k.Name), tw, detect.TypeString); m != nil && m.Category != model.CatFreeText {
+			continue
+		}
+		if strings.HasSuffix(lower, "_name") && (!sample.IsText(v) || !(entryWords[bw[len(bw)-1]] || settings)) {
+			continue
+		}
+		return &preset.MetaTable{Key: k.Name, Value: v.Name, Labels: labels, Guard: true}
 	}
 	return nil
 }

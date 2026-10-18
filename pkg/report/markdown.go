@@ -114,6 +114,15 @@ func Markdown(w io.Writer, res *model.Result) error {
 		pf("\n")
 	}
 
+	if ct := cacheTables(res); len(ct) > 0 {
+		pf("## Tables that look like caches\n\nThe starter config suggests emptying them, commented out.\n\n" +
+			"| Table | Why |\n|---|---|\n")
+		for _, t := range ct {
+			pf("| %s | %s |\n", code(t.Name), cell(t.PossibleActionReason))
+		}
+		pf("\n")
+	}
+
 	declared, confirmed, likely, weak, unverified := relStats(res.Relationships)
 	pf("## Relationships\n\n")
 	pf("%d declared foreign keys; %d inferred: %d confirmed, %d likely, %d weak, %d not checked.\n\n",

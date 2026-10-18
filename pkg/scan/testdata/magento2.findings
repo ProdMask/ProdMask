@@ -1,0 +1,89 @@
+admin_user	email				email	high	high	fake_email
+admin_user	firstname				person_name	medium	medium	fake_first_name
+admin_user	lastname				person_name	medium	medium	fake_last_name
+admin_user	password				password_hash	high	high	staging_password
+admin_user	rp_token				secret	high	medium	null
+admin_user	username				username	medium	medium	fake_username
+core_config_data	value	carriers/ups/password			secret	high	high	null
+core_config_data	value	carriers/ups/username			username	medium	medium	fake_username
+core_config_data	value	payment/braintree/private_key			secret	high	high	null
+core_config_data	value	sales_email/general/async_sending			email	low	low	fake_email
+core_config_data	value	sales_email/order/copy_to			email	high	high	fake_email
+core_config_data	value	trans_email/ident_general/email			email	high	high	fake_email
+core_config_data	value	trans_email/ident_sales/email			email	high	high	fake_email
+cron_schedule	messages				free_text	low	low	redact
+customer_address_entity	city				city	medium	medium	fake_city
+customer_address_entity	company				company	low	medium	fake_company
+customer_address_entity	country_id				country	low	medium	keep
+customer_address_entity	fax				phone	high	medium	fake_phone
+customer_address_entity	firstname				person_name	medium	medium	fake_first_name
+customer_address_entity	lastname				person_name	medium	medium	fake_last_name
+customer_address_entity	postcode				postcode	medium	medium	fake_postcode
+customer_address_entity	region				region	low	medium	keep
+customer_address_entity	street				address	high	medium	fake_street
+customer_address_entity	telephone				phone	high	high	fake_phone
+customer_address_entity	vat_id				national_id	high	medium	hash
+customer_entity	confirmation				secret	low	medium	null
+customer_entity	dob				date_of_birth	high	medium	fake_date
+customer_entity	email				email	high	high	fake_email
+customer_entity	firstname				person_name	medium	medium	fake_first_name
+customer_entity	gender				gender	low	medium	keep
+customer_entity	lastname				person_name	medium	medium	fake_last_name
+customer_entity	middlename				person_name	medium	medium	fake_name
+customer_entity	password_hash				password_hash	high	high	staging_password
+customer_entity	rp_token				secret	high	medium	null
+customer_entity	taxvat				national_id	high	medium	hash
+customer_entity_varchar	value	instagram			website	low	medium	null
+customer_entity_varchar	value	mobile_phone			phone	high	high	fake_phone
+customer_grid_flat	billing_city				city	medium	medium	fake_city
+customer_grid_flat	billing_country_id				country	low	medium	keep
+customer_grid_flat	billing_firstname				person_name	medium	medium	fake_first_name
+customer_grid_flat	billing_full				address	high	high	fake_street
+customer_grid_flat	billing_lastname				person_name	medium	medium	fake_last_name
+customer_grid_flat	billing_postcode				postcode	medium	medium	fake_postcode
+customer_grid_flat	billing_street				address	high	medium	fake_street
+customer_grid_flat	billing_telephone				phone	high	high	fake_phone
+customer_grid_flat	dob				date_of_birth	high	medium	fake_date
+customer_grid_flat	email				email	high	high	fake_email
+customer_grid_flat	gender				gender	low	medium	keep
+customer_grid_flat	name				person_name	medium	medium	fake_name
+customer_grid_flat	shipping_full				address	high	high	fake_street
+customer_grid_flat	taxvat				national_id	high	medium	hash
+newsletter_subscriber	subscriber_confirm_code				secret	low	high	null
+newsletter_subscriber	subscriber_email				email	high	high	fake_email
+quote	customer_email				email	high	high	fake_email
+quote	customer_firstname				person_name	medium	medium	fake_first_name
+quote	customer_lastname				person_name	medium	medium	fake_last_name
+quote	password_hash				password_hash	high	medium	staging_password
+quote	remote_ip				ip_address	medium	high	fake_ip
+sales_order	customer_dob				date_of_birth	high	medium	fake_date
+sales_order	customer_email				email	high	high	fake_email
+sales_order	customer_firstname				person_name	medium	medium	fake_first_name
+sales_order	customer_gender				gender	low	medium	keep
+sales_order	customer_lastname				person_name	medium	medium	fake_last_name
+sales_order	customer_note				free_text	medium	high	redact
+sales_order	customer_taxvat				national_id	high	medium	hash
+sales_order	protect_code				secret	medium	high	null
+sales_order	remote_ip				ip_address	medium	high	fake_ip
+sales_order	x_forwarded_for				ip_address	medium	high	fake_ip
+sales_order_address	city				city	medium	medium	fake_city
+sales_order_address	company				company	low	medium	fake_company
+sales_order_address	country_id				country	low	medium	keep
+sales_order_address	email				email	high	high	fake_email
+sales_order_address	fax				phone	high	medium	fake_phone
+sales_order_address	firstname				person_name	medium	medium	fake_first_name
+sales_order_address	lastname				person_name	medium	medium	fake_last_name
+sales_order_address	postcode				postcode	medium	medium	fake_postcode
+sales_order_address	region				region	low	medium	keep
+sales_order_address	street				address	high	medium	fake_street
+sales_order_address	telephone				phone	high	high	fake_phone
+sales_order_address	vat_id				national_id	high	medium	hash
+sales_order_payment	additional_information		cc_last4		card_meta	low	medium	keep
+sales_order_payment	additional_information		cc_type		card_meta	low	medium	keep
+sales_order_payment	cc_exp_month				card_meta	low	medium	keep
+sales_order_payment	cc_exp_year				card_meta	low	medium	keep
+sales_order_payment	cc_last_4				card_meta	low	medium	keep
+sales_order_payment	cc_number_enc				card_number	high	medium	test_card
+sales_order_payment	cc_owner				person_name	medium	medium	fake_name
+sales_order_payment	cc_type				card_meta	low	medium	keep
+vault_payment_token	gateway_token				payment_token	high	high	null

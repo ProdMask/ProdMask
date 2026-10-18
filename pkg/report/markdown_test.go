@@ -76,3 +76,31 @@ func TestReportsKeyPatterns(t *testing.T) {
 		}
 	}
 }
+
+// Tables that look like caches get their own section, apart from the
+// tables a preset says to empty.
+func TestReportsCacheTables(t *testing.T) {
+	res := &model.Result{
+		Database: "forum",
+		Tables: []model.TableSummary{
+			{Name: "sessions", Action: "truncate", ActionReason: "sessions of live visitors"},
+			{Name: "content_cache_posts", PossibleAction: "truncate", PossibleActionReason: "looks like a cache: check it is rebuilt"},
+		},
+	}
+	var md, txt bytes.Buffer
+	if err := Markdown(&md, res); err != nil {
+		t.Fatal(err)
+	}
+	if err := Text(&txt, res, TextOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	m := md.String()
+	empty, caches := strings.Index(m, "## Tables to empty in the copy"), strings.Index(m, "## Tables that look like caches")
+	if empty < 0 || caches < 0 || !strings.Contains(m[caches:], "| `content_cache_posts` | looks like a cache") ||
+		strings.Contains(m[empty:caches], "content_cache_posts") {
+		t.Errorf("Markdown:\n%s", m)
+	}
+	if !strings.Contains(txt.String(), "Tables that look like caches") || !strings.Contains(txt.String(), "content_cache_posts") {
+		t.Errorf("text report:\n%s", txt.String())
+	}
+}

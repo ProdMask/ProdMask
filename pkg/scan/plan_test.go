@@ -140,7 +140,7 @@ func TestPlanLookups(t *testing.T) {
 		}
 	}
 	kv := &kvRead{subjects: subs}
-	n, named := skippedSummary(&model.Table{Name: "wp_options"}, kv)
+	n, named := skippedSummary(&model.Table{Name: "wp_options"}, optionsMeta(), kv)
 	if skipped != 8 || n != 8 || named != 0 {
 		t.Errorf("skipped %d (summary %d, %d named)", skipped, n, named)
 	}
@@ -223,7 +223,7 @@ func TestAnalyzeKVPrecedence(t *testing.T) {
 	s := &sample.Sample{Columns: tbl.Columns, Rows: [][]sql.NullString{{
 		{String: "7", Valid: true}, {String: "rank-math-options-titles", Valid: true}, {String: long[:4096], Valid: true},
 	}}}
-	fs := analyzeKV(tbl, s, optionsMeta(), kv)
+	fs, _ := analyzeKV(tbl, s, optionsMeta(), kv)
 	var secretPath *model.Finding
 	for i := range fs {
 		if fs[i].Path == "facebook_secret" && fs[i].Category == model.CatSecret {
@@ -339,7 +339,7 @@ func TestSettleByteCap(t *testing.T) {
 	if !kv.read["aa_email"] || !kv.read["bb_email"] || kv.read["cc_email"] || kv.read["dd_email"] {
 		t.Errorf("read %v", kv.read)
 	}
-	if n, _ := skippedSummary(tbl, kv); n != 2 {
+	if n, _ := skippedSummary(tbl, &preset.MetaTable{}, kv); n != 2 {
 		t.Errorf("%d keys skipped, want 2", n)
 	}
 }
@@ -376,7 +376,8 @@ func TestAnalyzeKVWindowWithoutPK(t *testing.T) {
 	}
 	s.Rows = append(s.Rows, row("billing_email", "jane@mail.fixture.gr"), row("billing_email", "john@mail.fixture.gr"))
 	sampled := map[string]int{}
-	for _, f := range analyzeKV(tbl, s, meta, kv) {
+	fs, _ := analyzeKV(tbl, s, meta, kv)
+	for _, f := range fs {
 		if f.Category == model.CatEmail {
 			sampled[f.MetaKey] = f.Sampled
 		}
@@ -400,7 +401,8 @@ func TestAnalyzeKVFamilyPartial(t *testing.T) {
 			kv.addRows(k, []sample.KV{{Key: k, Value: "x"}})
 		}
 		kv.probed["um_email_as_username_"] = probed
-		for _, f := range analyzeKV(tbl, nil, meta, kv) {
+		fs, _ := analyzeKV(tbl, nil, meta, kv)
+		for _, f := range fs {
 			if f.KeyName {
 				return f.KeysPartial
 			}

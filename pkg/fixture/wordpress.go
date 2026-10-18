@@ -300,7 +300,11 @@ func (f *filler) wordpressOptions(people []person, logins []string) {
 			"publishable_key", "pk_" + "live_" + g.alnum(24), "secret_key", g.stripeKey("live"),
 			"test_secret_key", g.stripeKey("test"), "webhook_secret", "whsec_" + g.alnum(32)}), "yes"},
 		{"woocommerce_cod_settings", php(kv{"enabled", "yes", "title", "Cash on delivery"}), "yes"},
-		{"woocommerce_paypal_settings", php(kv{"enabled", "no", "testmode", "no", "email", admin.email}), "yes"},
+		// PayPal's NVP API credentials, from fixed pieces so the generator's
+		// sequence, and every value after it, stays as it was.
+		{"woocommerce_paypal_settings", php(kv{"enabled", "no", "testmode", "no", "email", admin.email,
+			"api_username", "seller_api1.fixture-store.test", "api_password", "Pw7" + f.canary + "X",
+			"api_signature", strings.Repeat("A1b2C3d4", 7), "sandbox_api_password", "Sb" + "x9Kq2mP4"}), "yes"},
 		{"wp_mail_smtp", php(kv{"mail", kv{"from_email", "shop@fixture-store.gr", "from_name", "Fixture Store", "mailer", "sendgrid"},
 			"sendgrid", kv{"api_key", g.sendgridKey(), "domain", ""}}), "yes"},
 		{"as3cf_settings", php(kv{"provider", "aws", "access-key-id", g.awsKeyID(), "bucket", "fixture-media"}), "yes"},

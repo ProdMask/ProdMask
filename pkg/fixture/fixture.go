@@ -1,8 +1,9 @@
 // Package fixture builds fake WordPress/WooCommerce, Magento 2 and Laravel
-// databases for tests. All data is invented: names from short lists, streets
-// and cities mixed at random, phone numbers in the 555-01xx range reserved
-// for fiction, IP addresses from the documentation ranges. Secret-looking
-// strings are assembled at run time so that none sits in the repository.
+// databases for tests, and a generic one no preset knows. All data is
+// invented: names from short lists, streets and cities mixed at random,
+// phone numbers in the 555-01xx range reserved for fiction, IP addresses
+// from the documentation ranges. Secret-looking strings are assembled at
+// run time so that none sits in the repository.
 package fixture
 
 import (
@@ -26,10 +27,12 @@ var (
 	magentoSQL string
 	//go:embed sql/laravel.sql
 	laravelSQL string
+	//go:embed sql/generic.sql
+	genericSQL string
 )
 
 // Platforms lists the fixtures Build can make.
-var Platforms = []string{"wordpress", "magento2", "laravel"}
+var Platforms = []string{"wordpress", "magento2", "laravel", "generic"}
 
 // Options for Build.
 type Options struct {
@@ -42,7 +45,8 @@ type Options struct {
 // the platform. admin needs multiStatements=true and the right to create
 // databases.
 func Build(ctx context.Context, admin *sql.DB, platform, database string, opts Options) error {
-	ddl := map[string]string{"wordpress": wordpressSQL, "magento2": magentoSQL, "laravel": laravelSQL}[platform]
+	ddl := map[string]string{"wordpress": wordpressSQL, "magento2": magentoSQL, "laravel": laravelSQL,
+		"generic": genericSQL}[platform]
 	if ddl == "" {
 		return fmt.Errorf("unknown fixture %q", platform)
 	}
@@ -79,6 +83,8 @@ func Build(ctx context.Context, admin *sql.DB, platform, database string, opts O
 		f.magento()
 	case "laravel":
 		f.laravel()
+	case "generic":
+		f.generic()
 	}
 	return f.err
 }

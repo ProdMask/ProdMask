@@ -94,6 +94,7 @@ const (
 	CatWebsite      Category = "website"
 	CatSessionData  Category = "session_data"
 	CatFreeText     Category = "free_text"
+	CatDeviceID     Category = "device_id"
 )
 
 // CategoryInfo describes a category: a label for people, the default
@@ -130,6 +131,7 @@ var categoryInfo = map[Category]CategoryInfo{
 	CatWebsite:      {"personal website", SeverityLow, "null"},
 	CatSessionData:  {"session data", SeverityMedium, "null"},
 	CatFreeText:     {"free text with personal data", SeverityMedium, "redact"},
+	CatDeviceID:     {"device or hardware ID", SeverityMedium, "hash"},
 }
 
 // Info returns the description of a category.
@@ -419,9 +421,17 @@ type TableSummary struct {
 	KeyColumn    string   `json:"key_column,omitempty"`
 	ValueColumn  string   `json:"value_column,omitempty"`
 	Keys         int      `json:"keys,omitempty"` // distinct keys read in a key/value table
-	Action       string   `json:"suggested_action,omitempty"`
-	ActionReason string   `json:"action_reason,omitempty"`
-	Error        string   `json:"error,omitempty"`
+	// HiddenKeys counts the keys with confident findings that reports show
+	// as "(key hidden)": their names may hold data, so no rule names them.
+	HiddenKeys   int    `json:"hidden_keys,omitempty"`
+	Action       string `json:"suggested_action,omitempty"`
+	ActionReason string `json:"action_reason,omitempty"`
+	// PossibleAction is weaker than Action: a guess, such as emptying a
+	// table that looks like a cache, which the user should confirm. Tools
+	// that act on suggested_action never see it.
+	PossibleAction       string `json:"possible_action,omitempty"`
+	PossibleActionReason string `json:"possible_action_reason,omitempty"`
+	Error                string `json:"error,omitempty"`
 }
 
 // ScanOptions records the settings a scan ran with.

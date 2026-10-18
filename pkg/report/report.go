@@ -250,3 +250,15 @@ func truncateTables(res *model.Result) []model.TableSummary {
 	}
 	return out
 }
+
+// cacheTables lists the tables with a possible action: guesses, such as
+// emptying a table that looks like a cache, for the user to confirm.
+func cacheTables(res *model.Result) []model.TableSummary {
+	var out []model.TableSummary
+	for _, t := range res.Tables {
+		if t.PossibleAction != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}

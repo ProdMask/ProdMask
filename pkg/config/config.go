@@ -48,6 +48,19 @@ type tableConf struct {
 	columns        map[string]*field
 	keyCol, valCol string
 	keys           map[string]*field
+	// A suggestion written commented out, such as emptying a cache.
+	possible, possibleReason string
+	// Keys reports show as "(key hidden)" that hold findings: no rule can
+	// name them, so a comment says what they hold.
+	hidden     int
+	hiddenCats []string
+}
+
+// commentOnly reports whether everything a table would get in the config
+// is a comment, so its name line is commented out too and the YAML never
+// holds an empty table.
+func (t *tableConf) commentOnly() bool {
+	return t.action == "" && len(t.columns) == 0 && len(t.keys) == 0
 }
 
 // better reports whether finding a should decide the mask over b.
@@ -64,7 +77,8 @@ func better(a, b model.Finding) bool {
 // Header lines that say how to read the config.
 var header = []string{
 	"It is a starting point, not a guarantee: review every rule, and rescan after schema changes.",
-	"Lines starting with \"# \" inside a table are weak matches; uncomment the ones that are real.",
+	"Lines starting with \"# \" are weak matches or suggestions, such as emptying a table that looks like a cache;",
+	"uncomment the ones that are real, with their table's name line.",
 	"In keys and in path segments alike, * stands for one or more characters that vary, such as a user ID.",
 	"A path segment that is exactly * stands for the keys at that level that aren't plain names (hashes, labels",
 	"with spaces, data); plain-named keys beside them keep their own rules. Stored keys never contain *.",
@@ -90,6 +104,14 @@ func Write(w io.Writer, res *model.Result) error {
 			t := get(ts.Name)
 			t.action, t.reason = ts.Action, ts.ActionReason
 		}
+		if ts.PossibleAction != "" {
+			t := get(ts.Name)
+			t.possible, t.possibleReason = ts.PossibleAction, ts.PossibleActionReason
+		}
+		if ts.HiddenKeys > 0 {
+			t := get(ts.Name)
+			t.hidden, t.keyCol, t.valCol = ts.HiddenKeys, ts.KeyColumn, ts.ValueColumn
+		}
 	}
 
 	// Pick one finding per column, key, path, row condition and key name:
@@ -100,6 +122,10 @@ func Write(w io.Writer, res *model.Result) error {
 	var keys []string
 	for _, f := range res.Findings {
 		if f.MetaKey == "(key hidden)" {
+			if t := tables[f.Table]; t != nil && t.hidden > 0 && f.Confidence > model.ConfidenceLow &&
+				!slices.Contains(t.hiddenCats, f.Category.Label()) {
+				t.hiddenCats = append(t.hiddenCats, f.Category.Label())
+			}
 			continue
 		}
 		k := f.Table + "\x00" + f.Column + "\x00" + f.MetaKey + "\x00" + f.Path + "\x00" + f.Where + "\x00" + fmt.Sprint(f.KeyName)
@@ -216,22 +242,42 @@ func Write(w io.Writer, res *model.Result) error {
 	}
 
 	names := make([]string, 0, len(tables))
-	for n := range tables {
+	live := 0
+	for n, t := range tables {
 		names = append(names, n)
+		if !t.commentOnly() {
+			live++
+		}
 	}
 	sort.Strings(names)
 	pf("\ntables:\n")
-	if len(names) == 0 {
-		pf("  {}\n")
+	if live == 0 {
+		pf("  {}  # delete this line when you uncomment a table\n")
 	}
 	for _, n := range names {
 		t := tables[n]
-		pf("  %s:\n", scalar(n))
+		in := "    "
+		if t.commentOnly() {
+			pf("  # %s:\n", scalar(n))
+			in = "  #   " // uncommented, these lines sit under the table's name
+		} else {
+			pf("  %s:\n", scalar(n))
+		}
 		if t.action != "" {
-			pf("    action: %s%s\n", t.action, comment(t.reason))
-			if len(t.columns) == 0 && len(t.keys) == 0 {
-				continue
+			pf("%saction: %s%s\n", in, t.action, comment(t.reason))
+		}
+		if t.possible != "" {
+			suggestion := "# "
+			if t.commentOnly() {
+				suggestion = ""
 			}
+			pf("%s%saction: %s%s\n", in, suggestion, t.possible, comment(t.possibleReason))
+		}
+		if t.hidden > 0 {
+			pf("%s# %s\n", in, hiddenNote(t))
+		}
+		if len(t.columns) == 0 && len(t.keys) == 0 {
+			continue
 		}
 		if len(t.columns) > 0 {
 			pf("    columns:\n")
@@ -287,6 +333,25 @@ func Write(w io.Writer, res *model.Result) error {
 		}
 	}
 	return b.Flush()
+}
+
+// hiddenNote says what a table's hidden keys hold, and that their values
+// stay as they are unless the user writes rules for them by hand. It stays
+// on one line, whatever the column names hold.
+func hiddenNote(t *tableConf) string {
+	cats := append([]string(nil), t.hiddenCats...)
+	sort.Strings(cats)
+	what := strings.Join(cats, ", ")
+	if what == "" {
+		what = "personal data"
+	}
+	note := fmt.Sprintf("%d keys not shown hold: %s; their values are copied unmasked unless you add rules for them "+
+		"(key column %s, value column %s)", t.hidden, what, t.keyCol, t.valCol)
+	if t.hidden == 1 {
+		note = fmt.Sprintf("1 key not shown holds: %s; its values are copied unmasked unless you add a rule for it "+
+			"(key column %s, value column %s)", what, t.keyCol, t.valCol)
+	}
+	return strings.Join(strings.Fields(note), " ")
 }
 
 func sortRows(rows []rowRule) {

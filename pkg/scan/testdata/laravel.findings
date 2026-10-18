@@ -1,0 +1,31 @@
+failed_jobs	exception				free_text	medium	high	redact
+failed_jobs	payload		data.command.email		email	high	high	fake_email
+jobs	payload		data.command.email		email	high	high	fake_email
+notifications	data		customer.email		email	high	high	fake_email
+notifications	data		customer.name		person_name	medium	medium	fake_name
+notifications	data		customer.phone		phone	high	high	fake_phone
+notifications	data		shipping.city		city	medium	medium	fake_city
+notifications	data		shipping.line1		address	high	medium	fake_street
+notifications	data		shipping.postcode		postcode	medium	medium	fake_postcode
+orders	notes				free_text	medium	high	redact
+orders	shipping_address		city		city	medium	medium	fake_city
+orders	shipping_address		country		country	low	medium	keep
+orders	shipping_address		line1		address	high	medium	fake_street
+orders	shipping_address		name		person_name	medium	medium	fake_name
+orders	shipping_address		phone		phone	high	high	fake_phone
+orders	shipping_address		postcode		postcode	medium	medium	fake_postcode
+password_reset_tokens	email				email	high	high	fake_email
+password_reset_tokens	token				secret	high	medium	null
+personal_access_tokens	token				secret	high	medium	null
+sessions	ip_address				ip_address	medium	high	fake_ip
+sessions	payload				session_data	medium	high	null
+sessions	user_agent				user_agent	medium	high	fake_user_agent
+subscriptions	stripe_id				payment_token	high	high	null
+users	email				email	high	high	fake_email
+users	name				person_name	medium	medium	fake_name
+users	password				password_hash	high	high	staging_password
+users	pm_last_four				card_meta	low	medium	keep
+users	remember_token				secret	high	medium	null
+users	stripe_id				payment_token	high	medium	null
+users	two_factor_recovery_codes				secret	high	medium	null
+users	two_factor_secret				secret	high	medium	null

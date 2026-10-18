@@ -2,8 +2,10 @@ package detect
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 var (
@@ -70,12 +72,34 @@ type Profile struct {
 	// birth date has at least four.
 	MaxDigits int
 
+	// Values that back or rule out other judgements: hardware IDs
+	// (Opaque), email addresses inside URLs (Inline), URLs and paths
+	// (URL), cryptocurrency addresses (Crypto), text with spaces and no
+	// merge tags (Spaced), and whole numbers (Whole).
+	Opaque, Inline, URL, Crypto, Spaced, Whole int
+
+	// pw counts what each value could be under a password's name, split by
+	// whether it mixes two or more kinds of character. pwMarks counts the
+	// tokens of one kind of character by their hash, to tell a mark repeated
+	// across rows (LOCKED, ldap) from passwords people typed.
+	pw      [pwKinds][2]int
+	pwMarks map[uint64]int
+
 	Structured int
 	Paths      map[string]*Profile
 	pathKeys   map[string][]string
 	walk       bool
 	name       []string // tokens of the field's own name, for FieldName
+	parent     []string // tokens of the key above a path's own, for echoes
+	ctx        []string // words of the table, for naming paths past the cap
 	named      int      // paths admitted past maxPaths
+}
+
+// WithContext records the words of the table a field belongs to, so paths
+// past the path cap are named in the same context as the rest.
+func (p *Profile) WithContext(words []string) *Profile {
+	p.ctx = words
+	return p
 }
 
 // NewProfileNamed returns an empty profile for a field with the given
@@ -141,7 +165,7 @@ func (p *Profile) addPath(path []string, v string) {
 			// Big settings arrays: keep paths whose names say something,
 			// and still look for secrets in the rest.
 			if p.named >= maxNamedPaths || last < 0 ||
-				MatchName(Tokens(path[last]), pathContext(path[:last]), tStr|tJSON) == nil {
+				MatchName(NameWords(path[last]), p.pathContext(path[:last]), tStr|tJSON) == nil {
 				p.overflow(v)
 				return
 			}
@@ -150,6 +174,9 @@ func (p *Profile) addPath(path []string, v string) {
 		sub = &Profile{}
 		if last >= 0 {
 			sub.name = Tokens(path[last])
+			if prev := lastName(path[:last]); prev >= 0 {
+				sub.parent = Tokens(path[prev])
+			}
 		}
 		p.Paths[key] = sub
 		p.pathKeys[key] = append([]string(nil), path...)
@@ -194,8 +221,10 @@ func lastName(path []string) int {
 	return -1
 }
 
-func pathContext(keys []string) []string {
-	var ctx []string
+// pathContext is the context a path's name is judged in: the table's
+// words, the field's own name, then the keys above it.
+func (p *Profile) pathContext(keys []string) []string {
+	ctx := append(append([]string(nil), p.ctx...), p.name...)
 	for _, k := range keys {
 		ctx = append(ctx, Tokens(k)...)
 	}
@@ -231,10 +260,30 @@ func (p *Profile) addScalar(t string) {
 		p.FieldName++
 	}
 	p.MaxDigits = max(p.MaxDigits, countDigits(t))
+	p.addPassword(t)
+	if reDigitsOnly.MatchString(t) {
+		p.Whole++
+	}
+	if opaque(t) {
+		p.Opaque++
+	}
+	if urlLike(t) {
+		p.URL++
+	}
+	if cryptoAddress(t) {
+		p.Crypto++
+	}
+	if strings.ContainsAny(t, " \t\n") && strings.ContainsFunc(t, unicode.IsLetter) && !mergeTag(t) {
+		p.Spaced++
+	}
 	matched := false
 	email, reserved := IsEmail(t), false
-	if email {
+	if addr, ok := mailtoEmail(t); ok {
+		email, reserved = true, reservedEmail(addr)
+	} else if email {
 		reserved = reservedEmail(t)
+	} else if inlineEmail(t) {
+		p.Inline++
 	} else if list := emailList(t); list != nil {
 		// Recipient settings: "staff@shop.example, boss@shop.example".
 		email, reserved = true, true
@@ -364,21 +413,18 @@ func wordPart(s string) bool {
 }
 
 // echo reports whether a value only repeats the field's own name, as in
-// "First name" under first_name, or user_login under user_login.
+// "First name" under first_name, or user_login under user_login; or the key
+// above it, or that key's last word, as in WordPress's role map, where
+// author.name holds "Author" and um_member.name "Member".
 func (p *Profile) echo(t string) bool {
-	if len(p.name) == 0 || len(t) > 64 {
+	if len(t) > 64 || (len(p.name) == 0 && len(p.parent) == 0) {
 		return false
 	}
 	vt := Tokens(t)
-	if len(vt) != len(p.name) {
-		return false
+	if slices.Equal(vt, p.name) || slices.Equal(vt, p.parent) {
+		return len(vt) > 0
 	}
-	for i := range vt {
-		if vt[i] != p.name[i] {
-			return false
-		}
-	}
-	return true
+	return len(vt) == 1 && len(p.parent) > 0 && vt[0] == p.parent[len(p.parent)-1]
 }
 
 // leafMaxDigits is the most digits any sampled value holds, looking inside

@@ -1,0 +1,160 @@
+wp_actionscheduler_logs	message				free_text	medium	medium	redact
+wp_commentmeta	meta_value	akismet_as_submitted	comment_author		person_name	medium	medium	fake_name
+wp_commentmeta	meta_value	akismet_as_submitted	comment_author_email		email	high	high	fake_email
+wp_commentmeta	meta_value	akismet_as_submitted	comment_author_url		website	low	medium	null
+wp_commentmeta	meta_value	akismet_as_submitted	user_agent		user_agent	medium	high	fake_user_agent
+wp_commentmeta	meta_value	akismet_as_submitted	user_ip		ip_address	medium	high	fake_ip
+wp_comments	comment_agent				user_agent	medium	high	fake_user_agent
+wp_comments	comment_author				person_name	medium	medium	fake_name
+wp_comments	comment_author_IP				ip_address	medium	high	fake_ip
+wp_comments	comment_author_email				email	high	high	fake_email
+wp_comments	comment_author_url				website	low	medium	null
+wp_comments	comment_content				free_text	medium	medium	redact
+wp_options	option_value	_transient_fixture_customer_email			email	low	low	delete
+wp_options	option_value	admin_email			email	high	high	fake_email
+wp_options	option_value	as3cf_settings	access-key-id		secret	critical	high	null
+wp_options	option_value	fixture_admin_recipient			email	high	high	fake_email
+wp_options	option_value	fixture_hashids_salt			secret	high	medium	null
+wp_options	option_value	jetpack_private_options	blog_token		secret	high	medium	null
+wp_options	option_value	limit_login_lockouts	{}		ip_address	medium	medium	fake_ip
+wp_options	option_value	limit_login_logged	{}		ip_address	medium	medium	fake_ip
+wp_options	option_value	limit_login_retries	{}		ip_address	medium	medium	fake_ip
+wp_options	option_value	limit_login_retries_valid	{}		ip_address	medium	medium	fake_ip
+wp_options	option_value	logged_in_salt			secret	high	high	null
+wp_options	option_value	rank-math-options-titles	facebook_secret		secret	high	medium	null
+wp_options	option_value	secret_key			secret	high	high	null
+wp_options	option_value	um_cache_userdata_*			email	high	high	delete
+wp_options	option_value	woocommerce_cancelled_order_settings	recipient		email	high	high	fake_email
+wp_options	option_value	woocommerce_eu_vat_number_validate			national_id	low	low	hash
+wp_options	option_value	woocommerce_new_order_settings	recipient		email	high	high	fake_email
+wp_options	option_value	woocommerce_paypal_settings	api_password		secret	critical	high	null
+wp_options	option_value	woocommerce_paypal_settings	api_signature		secret	high	medium	null
+wp_options	option_value	woocommerce_paypal_settings	api_username		username	medium	medium	fake_username
+wp_options	option_value	woocommerce_paypal_settings	email		email	high	high	fake_email
+wp_options	option_value	woocommerce_paypal_settings	sandbox_api_password		secret	high	high	null
+wp_options	option_value	woocommerce_stripe_settings	secret_key		secret	critical	high	null
+wp_options	option_value	woocommerce_stripe_settings	test_secret_key		secret	high	high	null
+wp_options	option_value	woocommerce_stripe_settings	webhook_secret		secret	critical	high	null
+wp_options	option_value	wp_mail_smtp	mail.from_email		email	high	high	fake_email
+wp_options	option_value	wp_mail_smtp	sendgrid.api_key		secret	critical	high	null
+wp_options	option_value	wp_mail_smtp_mail_key			secret	high	high	null
+wp_options	option_value	wpgmza_temp_api			secret	critical	high	null
+wp_postmeta	meta_value	_bbp_author_ip			ip_address	medium	high	fake_ip
+wp_postmeta	meta_value	_billing_address_1			address	high	medium	fake_street
+wp_postmeta	meta_value	_billing_address_index			address	high	high	null
+wp_postmeta	meta_value	_billing_city			city	medium	medium	fake_city
+wp_postmeta	meta_value	_billing_company			company	low	medium	fake_company
+wp_postmeta	meta_value	_billing_country			country	low	medium	keep
+wp_postmeta	meta_value	_billing_email			email	high	high	fake_email
+wp_postmeta	meta_value	_billing_first_name			person_name	medium	medium	fake_first_name
+wp_postmeta	meta_value	_billing_last_name			person_name	medium	medium	fake_last_name
+wp_postmeta	meta_value	_billing_phone			phone	high	high	fake_phone
+wp_postmeta	meta_value	_billing_postcode			postcode	medium	medium	fake_postcode
+wp_postmeta	meta_value	_billing_state			region	low	medium	keep
+wp_postmeta	meta_value	_customer_ip_address			ip_address	medium	high	fake_ip
+wp_postmeta	meta_value	_customer_user_agent			user_agent	medium	high	fake_user_agent
+wp_postmeta	meta_value	_mail	recipient		email	high	high	fake_email
+wp_postmeta	meta_value	_mail	sender		free_text	medium	high	redact
+wp_postmeta	meta_value	_order_key			secret	medium	high	null
+wp_postmeta	meta_value	_shipping_address_1			address	high	medium	fake_street
+wp_postmeta	meta_value	_shipping_address_index			address	high	high	null
+wp_postmeta	meta_value	_shipping_city			city	medium	medium	fake_city
+wp_postmeta	meta_value	_shipping_country			country	low	medium	keep
+wp_postmeta	meta_value	_shipping_first_name			person_name	medium	medium	fake_first_name
+wp_postmeta	meta_value	_shipping_last_name			person_name	medium	medium	fake_last_name
+wp_postmeta	meta_value	_shipping_postcode			postcode	medium	medium	fake_postcode
+wp_postmeta	meta_value	_stripe_customer_id			payment_token	high	medium	null
+wp_postmeta	meta_value	_stripe_source_id			payment_token	high	medium	null
+wp_postmeta	meta_value	_transaction_id			payment_token	medium	high	null
+wp_postmeta	meta_value	customer_email	[]		email	high	high	fake_email
+wp_posts	post_password				secret	medium	high	keep
+wp_posts	post_title			post_type = 'user_request'	email	high	high	fake_email
+wp_um_metadata	um_value	mobile_number			phone	high	high	fake_phone
+wp_usermeta	meta_key	um_email_as_username_* (name)			email	high	high	fake_email
+wp_usermeta	meta_value	billing_address_1			address	high	medium	fake_street
+wp_usermeta	meta_value	billing_city			city	medium	medium	fake_city
+wp_usermeta	meta_value	billing_company			company	low	medium	fake_company
+wp_usermeta	meta_value	billing_country			country	low	medium	keep
+wp_usermeta	meta_value	billing_email			email	high	high	fake_email
+wp_usermeta	meta_value	billing_first_name			person_name	medium	medium	fake_first_name
+wp_usermeta	meta_value	billing_last_name			person_name	medium	medium	fake_last_name
+wp_usermeta	meta_value	billing_phone			phone	high	high	fake_phone
+wp_usermeta	meta_value	billing_postcode			postcode	medium	medium	fake_postcode
+wp_usermeta	meta_value	billing_state			region	low	medium	keep
+wp_usermeta	meta_value	community-events-location			geo_location	medium	high	null
+wp_usermeta	meta_value	community-events-location	country		country	low	medium	keep
+wp_usermeta	meta_value	community-events-location	ip		ip_address	medium	high	fake_ip
+wp_usermeta	meta_value	community-events-location	latitude		geo_location	medium	medium	null
+wp_usermeta	meta_value	community-events-location	longitude		geo_location	medium	medium	null
+wp_usermeta	meta_value	description			free_text	medium	medium	redact
+wp_usermeta	meta_value	first_name			person_name	medium	medium	fake_first_name
+wp_usermeta	meta_value	last_name			person_name	medium	medium	fake_last_name
+wp_usermeta	meta_value	nickname			person_name	medium	medium	fake_name
+wp_usermeta	meta_value	session_tokens			secret	high	high	delete
+wp_usermeta	meta_value	session_tokens	*.ip		ip_address	medium	high	fake_ip
+wp_usermeta	meta_value	session_tokens	*.ua		user_agent	medium	high	fake_user_agent
+wp_usermeta	meta_value	shipping_address_1			address	high	medium	fake_street
+wp_usermeta	meta_value	shipping_city			city	medium	medium	fake_city
+wp_usermeta	meta_value	shipping_country			country	low	medium	keep
+wp_usermeta	meta_value	shipping_first_name			person_name	medium	medium	fake_first_name
+wp_usermeta	meta_value	shipping_last_name			person_name	medium	medium	fake_last_name
+wp_usermeta	meta_value	shipping_postcode			postcode	medium	medium	fake_postcode
+wp_usermeta	meta_value	um_email_as_username_*			email	high	high	fake_email
+wp_users	display_name				email	high	medium	fake_name
+wp_users	display_name				person_name	medium	medium	fake_name
+wp_users	user_activation_key				secret	high	medium	null
+wp_users	user_email				email	high	high	fake_email
+wp_users	user_login				email	high	medium	fake_username
+wp_users	user_login				username	medium	medium	fake_username
+wp_users	user_nicename				email	high	medium	fake_username
+wp_users	user_nicename				username	medium	medium	fake_username
+wp_users	user_pass				password_hash	high	high	staging_password
+wp_users	user_url				free_text	medium	high	redact
+wp_users	user_url				website	low	medium	null
+wp_wc_customer_lookup	city				city	medium	medium	fake_city
+wp_wc_customer_lookup	country				country	low	medium	keep
+wp_wc_customer_lookup	email				email	high	high	fake_email
+wp_wc_customer_lookup	first_name				person_name	medium	medium	fake_first_name
+wp_wc_customer_lookup	last_name				person_name	medium	medium	fake_last_name
+wp_wc_customer_lookup	postcode				postcode	medium	medium	fake_postcode
+wp_wc_customer_lookup	state				region	low	high	keep
+wp_wc_customer_lookup	username				username	medium	medium	fake_username
+wp_wc_order_addresses	address_1				address	high	medium	fake_street
+wp_wc_order_addresses	address_2				address	high	medium	fake_street
+wp_wc_order_addresses	city				city	medium	medium	fake_city
+wp_wc_order_addresses	company				company	low	medium	fake_company
+wp_wc_order_addresses	country				country	low	medium	keep
+wp_wc_order_addresses	email				email	high	high	fake_email
+wp_wc_order_addresses	first_name				person_name	medium	medium	fake_first_name
+wp_wc_order_addresses	last_name				person_name	medium	medium	fake_last_name
+wp_wc_order_addresses	phone				phone	high	high	fake_phone
+wp_wc_order_addresses	postcode				postcode	medium	medium	fake_postcode
+wp_wc_order_addresses	state				region	low	high	keep
+wp_wc_order_operational_data	order_key				secret	medium	high	null
+wp_wc_orders	billing_email				email	high	high	fake_email
+wp_wc_orders	customer_note				free_text	medium	high	redact
+wp_wc_orders	ip_address				ip_address	medium	high	fake_ip
+wp_wc_orders	transaction_id				payment_token	medium	high	null
+wp_wc_orders	user_agent				user_agent	medium	high	fake_user_agent
+wp_wc_orders_meta	meta_value	_billing_address_index			address	high	high	null
+wp_wc_orders_meta	meta_value	_shipping_address_index			address	high	high	null
+wp_wc_orders_meta	meta_value	_stripe_customer_id			payment_token	high	medium	null
+wp_wc_orders_meta	meta_value	_wc_order_attribution_user_agent			user_agent	medium	high	fake_user_agent
+wp_wc_webhooks	secret				secret	high	medium	null
+wp_woocommerce_api_keys	consumer_key				secret	high	high	null
+wp_woocommerce_api_keys	consumer_secret				secret	critical	high	null
+wp_woocommerce_order_itemmeta	meta_value	Gift message			free_text	low	low	redact
+wp_woocommerce_payment_tokenmeta	meta_value	card_type			card_meta	low	high	keep
+wp_woocommerce_payment_tokenmeta	meta_value	expiry_month			card_meta	low	high	keep
+wp_woocommerce_payment_tokenmeta	meta_value	expiry_year			card_meta	low	high	keep
+wp_woocommerce_payment_tokenmeta	meta_value	last4			card_meta	low	high	keep
+wp_woocommerce_payment_tokens	token				payment_token	high	high	null
+wp_woocommerce_sessions	session_value				session_data	medium	high	null
+wp_woocommerce_sessions	session_value		customer.address_1		address	high	medium	fake_street
+wp_woocommerce_sessions	session_value		customer.city		city	medium	medium	fake_city
+wp_woocommerce_sessions	session_value		customer.country		country	low	medium	keep
+wp_woocommerce_sessions	session_value		customer.email		email	high	high	fake_email
+wp_woocommerce_sessions	session_value		customer.first_name		person_name	medium	medium	fake_first_name
+wp_woocommerce_sessions	session_value		customer.last_name		person_name	medium	medium	fake_last_name
+wp_woocommerce_sessions	session_value		customer.phone		phone	high	high	fake_phone
+wp_woocommerce_sessions	session_value		customer.postcode		postcode	medium	medium	fake_postcode

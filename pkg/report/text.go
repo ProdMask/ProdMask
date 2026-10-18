@@ -183,6 +183,18 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 		pf("\n")
 	}
 
+	if ct := cacheTables(res); len(ct) > 0 {
+		pf("%s\n", st.bold("Tables that look like caches (the starter config suggests emptying them, commented out)"))
+		width := 0
+		for _, t := range ct {
+			width = max(width, utf8.RuneCountInString(t.Name))
+		}
+		for _, t := range ct {
+			pf("  %s  %s\n", pad(t.Name, width), st.dim(t.PossibleActionReason))
+		}
+		pf("\n")
+	}
+
 	declared, confirmed, likely, weak, unverified := relStats(res.Relationships)
 	inferred := confirmed + likely + weak + unverified
 	pf("%s %d declared, %d inferred", st.bold("Relationships:"), declared, inferred)

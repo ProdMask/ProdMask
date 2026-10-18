@@ -338,6 +338,8 @@ var hashFormats = []hashFormat{
 	{"Drupal", regexp.MustCompile(`^\$S\$[./0-9A-Za-z]{52}$`)},
 	{"PBKDF2", regexp.MustCompile(`^pbkdf2_sha(?:1|256|512)\$\d+\$[^$]+\$[A-Za-z0-9+/=]+$`)},
 	{"Magento", regexp.MustCompile(`^[0-9a-f]{64}:[A-Za-z0-9]{0,64}:[0-9_]+$`)},
+	// Magento 1 accounts moved to Magento 2 keep their MD5 digest.
+	{"Magento", regexp.MustCompile(`^[0-9a-f]{32}:[A-Za-z0-9]{0,64}:[0-9_]+$`)},
 	{"Magento 1", regexp.MustCompile(`^[0-9a-f]{32}:[A-Za-z0-9]{2,32}$`)},
 }
 

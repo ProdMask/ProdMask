@@ -25,6 +25,10 @@ type Sampler struct {
 	DB          Querier
 	MaxValueLen int           // longer text values are cut on the server
 	Timeout     time.Duration // client-side limit per query
+	// Hex, when set, picks short binary columns (see ShortBinary) that Table
+	// reads as HEX(column), such as IP addresses stored as bytes. No other
+	// read selects a binary column.
+	Hex func(t *model.Table, c *model.Column) bool
 }
 
 // Sample is the set of rows read from one table.
@@ -32,6 +36,14 @@ type Sample struct {
 	Columns []*model.Column
 	Rows    [][]sql.NullString
 	Method  string
+	// Hex marks the columns read as HEX(column), in the order of Columns.
+	Hex []bool
+}
+
+// ShortBinary reports whether a column is binary or varbinary of at most 16
+// bytes, the size of a stored IPv4 or IPv6 address.
+func ShortBinary(c *model.Column) bool {
+	return (c.DataType == "binary" || c.DataType == "varbinary") && c.MaxLength > 0 && c.MaxLength <= 16
 }
 
 // Index returns the position of a column in the sample, or -1.
@@ -103,19 +115,10 @@ func ValueExpr(c *model.Column, n int) string {
 // rows, since old and new data often differ in shape. Otherwise the first
 // rows the server returns are used.
 func (sm *Sampler) Table(ctx context.Context, t *model.Table, limit int) (*Sample, error) {
-	s := &Sample{}
-	for _, c := range t.Columns {
-		if Sampleable(c) {
-			s.Columns = append(s.Columns, c)
-		}
-	}
+	s, exprs := sm.selectList(t)
 	if len(s.Columns) == 0 || limit <= 0 {
 		s.Method = "none"
 		return s, nil
-	}
-	exprs := make([]string, len(s.Columns))
-	for i, c := range s.Columns {
-		exprs[i] = sm.valueExpr(c)
 	}
 	sel := "SELECT " + strings.Join(exprs, ", ") + " FROM " + QuoteIdent(t.Name)
 
@@ -182,6 +185,24 @@ func (sm *Sampler) Table(ctx context.Context, t *model.Table, limit int) (*Sampl
 		}
 	}
 	return s, nil
+}
+
+// selectList picks the columns Table reads, and the expression for each:
+// the readable columns, plus the short binary columns Hex picks, as hex.
+func (sm *Sampler) selectList(t *model.Table) (*Sample, []string) {
+	s := &Sample{}
+	var exprs []string
+	for _, c := range t.Columns {
+		switch {
+		case Sampleable(c):
+			s.Columns, s.Hex = append(s.Columns, c), append(s.Hex, false)
+			exprs = append(exprs, sm.valueExpr(c))
+		case sm.Hex != nil && ShortBinary(c) && sm.Hex(t, c):
+			s.Columns, s.Hex = append(s.Columns, c), append(s.Hex, true)
+			exprs = append(exprs, "HEX("+QuoteIdent(c.Name)+")")
+		}
+	}
+	return s, exprs
 }
 
 // KeyValues reads up to limit values of valueCol from rows where keyCol

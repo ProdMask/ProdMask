@@ -60,6 +60,7 @@ func TestWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
+	checkTables(t, out)
 	for _, want := range []string{
 		"version: 1\n",
 		"      user_email: fake_email  # email address, high confidence\n",
@@ -102,6 +103,7 @@ func TestWriteRowMasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
+	checkTables(t, out)
 	for _, want := range []string{
 		"      post_password:\n" +
 			"        mask: fake_email  # email address, high confidence; also secret, key or token\n" +
@@ -154,6 +156,7 @@ func TestWriteKeyPatterns(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
+	checkTables(t, out)
 	for _, want := range []string{
 		"# In keys and in path segments alike, * stands for one or more characters that vary",
 		"plain-named keys beside them keep their own rules. Stored keys never contain *.",
@@ -192,6 +195,7 @@ func TestWriteWhereAndMixedColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
+	checkTables(t, out)
 	for _, want := range []string{
 		"      post_title:\n        rows:  # for the rows that match; the other rows keep their values\n" +
 			"          - where: \"post_type = 'user_request'\"\n            mask: fake_email  # email address, high confidence; privacy requests\n",
@@ -203,5 +207,109 @@ func TestWriteWhereAndMixedColumns(t *testing.T) {
 	}
 	if strings.Contains(out, "post_title: fake_email") || strings.Contains(out, "\n        mask: fake_email") {
 		t.Errorf("a row finding set the column mask:\n%s", out)
+	}
+}
+
+// checkTables checks the shape of a config's tables: section, as a YAML
+// parser would read it: every line sits inside the section, every live
+// table has a live line under it, and the section holds either live tables
+// or {}.
+func checkTables(t *testing.T, yml string) {
+	t.Helper()
+	_, section, ok := strings.Cut(yml, "\ntables:\n")
+	if !ok {
+		t.Fatalf("no tables: section in\n%s", yml)
+	}
+	section, _, _ = strings.Cut(section, "\n\n")
+	lines := strings.Split(section, "\n")
+	live, empty := 0, false
+	for i, l := range lines {
+		switch {
+		case l == "":
+			continue
+		case !strings.HasPrefix(l, "  "):
+			t.Errorf("line %q is outside the tables: section in YAML:\n%s", l, section)
+			continue
+		case strings.HasPrefix(l, "  {}"):
+			empty = true
+			continue
+		case strings.HasPrefix(l, "   ") || strings.HasPrefix(l, "  #"):
+			continue
+		}
+		// A live table name: the next live line must sit under it.
+		live++
+		next := ""
+		for _, m := range lines[i+1:] {
+			if !strings.HasPrefix(strings.TrimSpace(m), "#") {
+				next = m
+				break
+			}
+		}
+		if !strings.HasPrefix(next, "    ") {
+			t.Errorf("table %q is empty in YAML:\n%s", l, section)
+		}
+	}
+	if (live == 0) != empty {
+		t.Errorf("tables: holds %d live tables and {} %v in YAML:\n%s", live, empty, section)
+	}
+}
+
+func TestWriteSuggestionsAndHiddenKeys(t *testing.T) {
+	cache := model.TableSummary{Name: "content_cache_posts", PossibleAction: "truncate",
+		PossibleActionReason: "looks like a cache: applications rebuild their caches"}
+	write := func(res *model.Result) string {
+		t.Helper()
+		var b bytes.Buffer
+		if err := Write(&b, res); err != nil {
+			t.Fatal(err)
+		}
+		checkTables(t, b.String())
+		return b.String()
+	}
+	// A cache that is all the config has: commented out, and tables: {}.
+	yml := write(&model.Result{Database: "forum", Tables: []model.TableSummary{cache}})
+	if !strings.Contains(yml, "\ntables:\n  {}  # delete this line when you uncomment a table\n"+
+		"  # content_cache_posts:\n  #   action: truncate  # looks like a cache") {
+		t.Errorf("cache-only config:\n%s", yml)
+	}
+	if !strings.Contains(yml, "# Lines starting with \"# \" are weak matches or suggestions") {
+		t.Errorf("header:\n%s", yml)
+	}
+	// A cache with columns keeps its name and comments its suggestion.
+	yml = write(&model.Result{Database: "forum", Tables: []model.TableSummary{cache}, Findings: []model.Finding{
+		{Table: "content_cache_posts", Column: "cache_content", Category: model.CatFreeText, Severity: model.SeverityMedium,
+			Confidence: model.ConfidenceMedium, Mask: "redact"}}})
+	if !strings.Contains(yml, "\n  content_cache_posts:\n    # action: truncate  # looks like a cache") ||
+		!strings.Contains(yml, "      cache_content: redact") {
+		t.Errorf("cache with columns:\n%s", yml)
+	}
+	// Hidden keys: categories, a count and the columns, never a key.
+	entries := model.TableSummary{Name: "form_entries", Kind: "key/value", KeyColumn: "field_key", ValueColumn: "field_value",
+		HiddenKeys: 2}
+	hidden := []model.Finding{
+		{Table: "form_entries", Column: "field_value", MetaKey: "(key hidden)", Category: model.CatPhone,
+			Severity: model.SeverityHigh, Confidence: model.ConfidenceHigh, Mask: "fake_phone"},
+		{Table: "form_entries", Column: "field_value", MetaKey: "(key hidden)", Category: model.CatEmail,
+			Severity: model.SeverityHigh, Confidence: model.ConfidenceMedium, Mask: "fake_email"},
+	}
+	yml = write(&model.Result{Database: "site", Tables: []model.TableSummary{entries}, Findings: hidden})
+	want := "  # form_entries:\n  #   # 2 keys not shown hold: email address, phone number; their values are copied " +
+		"unmasked unless you add rules for them (key column field_key, value column field_value)\n"
+	if !strings.Contains(yml, want) || strings.Contains(yml, "(key hidden)") {
+		t.Errorf("hidden keys only:\n%s", yml)
+	}
+	// Beside shown keys, the note sits inside the live table.
+	yml = write(&model.Result{Database: "site", Tables: []model.TableSummary{entries}, Findings: append(hidden,
+		model.Finding{Table: "form_entries", Column: "field_value", MetaKey: "Phone number", Category: model.CatPhone,
+			Severity: model.SeverityHigh, Confidence: model.ConfidenceHigh, Mask: "fake_phone"})})
+	if !strings.Contains(yml, "\n  form_entries:\n    # 2 keys not shown hold:") || !strings.Contains(yml, "\"Phone number\": fake_phone") {
+		t.Errorf("hidden keys beside shown ones:\n%s", yml)
+	}
+	// A column name with a line break stays inside the comment.
+	odd := entries
+	odd.KeyColumn = "field\nkey"
+	yml = write(&model.Result{Database: "site", Tables: []model.TableSummary{odd}, Findings: hidden})
+	if !strings.Contains(yml, "(key column field key, value column field_value)\n") {
+		t.Errorf("odd column name:\n%s", yml)
 	}
 }

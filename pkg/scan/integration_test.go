@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -91,11 +93,17 @@ func TestFixtures(t *testing.T) {
 		"wordpress": checkWordPress,
 		"magento2":  checkMagento,
 		"laravel":   checkLaravel,
+		"generic":   checkGeneric,
+	}
+	// Warnings a fixture is built to cause.
+	expectedWarnings := map[string][]string{
+		"generic": {"1 key of form_entries holds findings but isn't shown"},
 	}
 	writes := map[string]string{
 		"wordpress": "INSERT INTO wp_options (option_name, option_value) VALUES ('prodmask_must_fail', 'x')",
 		"magento2":  "UPDATE customer_entity SET firstname = 'x' WHERE entity_id = 1",
 		"laravel":   "DELETE FROM migrations WHERE id = 1",
+		"generic":   "DELETE FROM kv WHERE id = 1",
 	}
 	moreChecks := map[string]func(context.Context, *testing.T, *dbconn.Session){
 		"wordpress": checkWordPressMore,
@@ -118,6 +126,7 @@ func TestFixtures(t *testing.T) {
 			}
 
 			res := runScan(ctx, t, sess, "auto")
+			checkGolden(t, platform, res)
 
 			outputs := render(t, res)
 			for name, out := range outputs {
@@ -125,6 +134,7 @@ func TestFixtures(t *testing.T) {
 					t.Errorf("the %s output contains a sampled value", name)
 				}
 			}
+			checkConfigTables(t, outputs["yml"])
 			if dir := os.Getenv("PRODMASK_TEST_OUT"); dir != "" {
 				for name, out := range outputs {
 					path := filepath.Join(dir, platform+"."+name)
@@ -134,12 +144,129 @@ func TestFixtures(t *testing.T) {
 				}
 			}
 			for _, w := range res.Warnings {
-				if !strings.Contains(w, "scan user can change") {
+				expected := strings.Contains(w, "scan user can change")
+				for _, e := range expectedWarnings[platform] {
+					expected = expected || strings.Contains(w, e)
+				}
+				if !expected {
 					t.Errorf("unexpected warning: %s", w)
 				}
 			}
 			checks[platform](t, res)
 		})
+	}
+}
+
+// checkGeneric checks the schema no preset knows: the shapes the old
+// backups review found, and the tables that must stay plain.
+func checkGeneric(t *testing.T, res *model.Result) {
+	if len(res.Platforms) != 0 {
+		t.Errorf("platforms detected: %+v", res.Platforms)
+	}
+	expectFindings(t, res, []want{
+		// Passwords typed into a POST log, and a plain SMTP password.
+		{"admin_login_logs", "admin_post_details", "", "password", model.CatSecret, model.SeverityCritical},
+		{"admin_login_logs", "admin_post_details", "", "newpass", model.CatSecret, model.SeverityCritical},
+		{"admin_login_logs", "admin_post_details", "", "set_password", model.CatSecret, model.SeverityCritical},
+		{"settings", "setting_value", "smtp_password", "", model.CatSecret, model.SeverityCritical},
+		{"admin", "pass", "", "", model.CatPasswordHash, model.SeverityHigh},
+		{"members", "members_pass_hash", "", "", model.CatPasswordHash, model.SeverityHigh},
+		// Names the rules missed, and IPs stored as bytes.
+		{"members", "member_login_key", "", "", model.CatSecret, model.SeverityHigh},
+		{"members", "hwid", "", "", model.CatDeviceID, model.SeverityMedium},
+		{"members", "members_seo_name", "", "", model.CatUsername, model.SeverityMedium},
+		{"members", "bday_day", "", "", model.CatDateOfBirth, model.SeverityHigh},
+		{"members", "regip", "", "", model.CatIPAddress, model.SeverityMedium},
+		{"members", "lastip", "", "", model.CatIPAddress, model.SeverityMedium},
+		{"members", "poster_ip", "", "", model.CatIPAddress, model.SeverityMedium},
+		{"game_logs", "summonername", "", "", model.CatUsername, model.SeverityMedium},
+		// Messages, identifier lists and emails inside URLs.
+		{"message_topics", "mt_title", "", "", model.CatFreeText, model.SeverityMedium},
+		{"inline_notifications", "notify_text", "", "", model.CatFreeText, model.SeverityMedium},
+		{"banfilters", "ban_content", "", "", model.CatFreeText, model.SeverityMedium},
+		{"donations", "data", "", "callback_url", model.CatFreeText, model.SeverityMedium},
+		// PayPal IPN fields by their parts.
+		{"paypal_ipn", "ipn_data", "", "address_street", model.CatAddress, model.SeverityHigh},
+		{"paypal_ipn", "ipn_data", "", "address_city", model.CatCity, model.SeverityMedium},
+		{"paypal_ipn", "ipn_data", "", "address_zip", model.CatPostcode, model.SeverityMedium},
+		{"paypal_ipn", "ipn_data", "", "address_name", model.CatPersonName, model.SeverityMedium},
+		// Key/value tables found without a preset.
+		{"setting", "value", "company_email", "", model.CatEmail, model.SeverityHigh},
+		{"settings", "setting_value", "admin_email", "", model.CatEmail, model.SeverityHigh},
+		{"form_entries", "field_value", "Phone number", "", model.CatPhone, model.SeverityHigh},
+		{"form_entries", "field_value", "(key hidden)", "", model.CatPhone, model.SeverityHigh},
+		{"cache_store", "cs_value", "settings", "email_in", model.CatEmail, model.SeverityHigh},
+		// Tables that hold people keep their columns.
+		{"contacts", "contact_name", "", "", model.CatPersonName, model.SeverityMedium},
+		{"customers", "customer_name", "", "", model.CatPersonName, model.SeverityMedium},
+		{"member_settings", "member_value", "", "", model.CatEmail, model.SeverityHigh},
+		{"kv", "value", "", "", model.CatPhone, model.SeverityHigh},
+	})
+	// The demoted table's keys may be the people's names the guard read: a
+	// weak match, so the starter config only suggests hashing them.
+	if f := weakFindingAt(res, "kv", "key", model.CatPersonName); f == nil || f.Confidence != model.ConfidenceLow || f.Mask != "hash" {
+		t.Errorf("kv.key: got %+v, want a low-confidence person name to hash", f)
+	}
+	// Labels, group names, wallets and hashed or binary IDs: no finding.
+	for _, f := range res.Findings {
+		if f.Confidence == model.ConfidenceLow {
+			continue
+		}
+		switch {
+		case f.Table == "ab_language_definitions", f.Table == "ab_customer_groups", f.Table == "content_cache_posts",
+			f.Path == "input_address", f.Path == "address_status", f.Column == "device_uuid":
+			t.Errorf("unexpected finding: %+v", f)
+		}
+	}
+	// Hashed addresses aren't read as hex: medium by name, values not read.
+	if f := findingAt(res, "members", "ip_hash", "", ""); f == nil || f.Confidence != model.ConfidenceMedium ||
+		f.Sampled != 0 || !slices.Contains(f.Reasons, "values not sampled") {
+		t.Errorf("members.ip_hash: got %+v, want medium by name, values not read", f)
+	}
+	tables := map[string]model.TableSummary{}
+	for _, ts := range res.Tables {
+		tables[ts.Name] = ts
+	}
+	for name, kind := range map[string]string{"setting": "key/value", "settings": "key/value", "form_entries": "key/value",
+		"ab_language_definitions": "key/value", "cache_store": "key/value", "kv": "table", "contacts": "table",
+		"customers": "table", "member_settings": "table"} {
+		if tables[name].Kind != kind {
+			t.Errorf("%s: kind %q, want %q", name, tables[name].Kind, kind)
+		}
+	}
+	if ts := tables["form_entries"]; ts.HiddenKeys != 1 {
+		t.Errorf("form_entries: %d hidden keys, want 1", ts.HiddenKeys)
+	}
+	for _, name := range []string{"content_cache_posts", "cache_store"} {
+		if ts := tables[name]; ts.PossibleAction != "truncate" || ts.Action != "" {
+			t.Errorf("%s: actions %q / %q, want a possible truncate only", name, ts.Action, ts.PossibleAction)
+		}
+	}
+	// The binary columns' documentation addresses appear in no output, in
+	// any form, including the hex of the ones stored as text.
+	outputs := render(t, res)
+	forms := []string{"192.0.2.", "198.51.100.", "203.0.113.", "2001:db8", "c00002", "c63364", "cb0071", "20010db8"}
+	for _, prefix := range []string{"192.0.2.", "198.51.100.", "203.0.113."} {
+		forms = append(forms, hex.EncodeToString([]byte(prefix)))
+	}
+	for name, out := range outputs {
+		lower := strings.ToLower(out)
+		for _, form := range forms {
+			if strings.Contains(lower, form) {
+				t.Errorf("the %s output contains %q", name, form)
+			}
+		}
+	}
+	// The starter config: a cache with nothing else is commented out, and
+	// the hidden key gets a comment, not a rule.
+	yml := outputs["yml"]
+	for _, want := range []string{"\n  # content_cache_posts:\n  #   action: truncate  # looks like a cache",
+		"\n  cache_store:\n    # action: truncate  # looks like a cache",
+		"    # 1 key not shown holds: phone number; its values are copied unmasked unless you add a rule for it " +
+			"(key column field_key, value column field_value)\n"} {
+		if !strings.Contains(yml, want) {
+			t.Errorf("the starter config is missing %q:\n%s", want, configTable(yml, "form_entries"))
+		}
 	}
 }
 
@@ -251,6 +378,10 @@ func checkWordPress(t *testing.T, res *model.Result) {
 		{"wp_options", "option_value", "woocommerce_stripe_settings", "secret_key", model.CatSecret, model.SeverityCritical},
 		{"wp_options", "option_value", "wp_mail_smtp", "sendgrid.api_key", model.CatSecret, model.SeverityCritical},
 		{"wp_options", "option_value", "as3cf_settings", "access-key-id", model.CatSecret, model.SeverityCritical},
+		// PayPal's NVP credentials stored as typed; the sandbox's rate high.
+		{"wp_options", "option_value", "woocommerce_paypal_settings", "api_password", model.CatSecret, model.SeverityCritical},
+		{"wp_options", "option_value", "woocommerce_paypal_settings", "sandbox_api_password", model.CatSecret, model.SeverityHigh},
+		{"wp_options", "option_value", "woocommerce_paypal_settings", "api_signature", model.CatSecret, model.SeverityHigh},
 		{"wp_wc_orders", "customer_note", "", "", model.CatFreeText, model.SeverityHigh},
 		{"wp_wc_order_addresses", "phone", "", "", model.CatPhone, model.SeverityHigh},
 		{"wp_woocommerce_sessions", "session_value", "", "customer.email", model.CatEmail, model.SeverityHigh},
@@ -300,6 +431,18 @@ func findingAt(res *model.Result, table, column, key, path string) *model.Findin
 	for i := range res.Findings {
 		f := &res.Findings[i]
 		if f.Table == table && f.Column == column && f.MetaKey == key && f.Path == path && f.Confidence > model.ConfidenceLow {
+			return f
+		}
+	}
+	return nil
+}
+
+// weakFindingAt returns a column's finding of a category, low confidence
+// included.
+func weakFindingAt(res *model.Result, table, column string, cat model.Category) *model.Finding {
+	for i := range res.Findings {
+		f := &res.Findings[i]
+		if f.Table == table && f.Column == column && f.MetaKey == "" && f.Path == "" && f.Category == cat {
 			return f
 		}
 	}
@@ -439,6 +582,7 @@ func TestWordPressMultisite(t *testing.T) {
 		}
 	}
 	res := runScan(ctx, t, openScan(ctx, t, adminCfg, db), "auto")
+	checkGolden(t, "multisite", res)
 	expectPlatforms(t, res, "wordpress", "woocommerce")
 	expectOrderKeysNulled(t, res, "wp_posts", model.SeverityLow)
 	expectOrderKeysNulled(t, res, "wp_2_posts", model.SeverityMedium)
@@ -486,6 +630,131 @@ func expectOrderKeysNulled(t *testing.T, res *model.Result, table string, sev mo
 	if !strings.Contains(section, want) || !strings.Contains(section, wantRows) || !strings.Contains(section, wantRequests) {
 		t.Errorf("the starter config does not null order and request keys in %s.post_password:\n%s", table, section)
 	}
+}
+
+// checkConfigTables checks the starter config's tables: section as a YAML
+// parser would read it: every line sits inside it, every live table has a
+// live line under it, and it holds either live tables or {}.
+func checkConfigTables(t *testing.T, yml string) {
+	t.Helper()
+	_, section, ok := strings.Cut(yml, "\ntables:\n")
+	if !ok {
+		t.Fatal("the starter config has no tables: section")
+	}
+	section, _, _ = strings.Cut(section, "\n\n")
+	lines := strings.Split(section, "\n")
+	live, empty := 0, false
+	for i, l := range lines {
+		switch {
+		case l == "":
+			continue
+		case !strings.HasPrefix(l, "  "):
+			t.Errorf("starter config line %q is outside tables:", l)
+			continue
+		case strings.HasPrefix(l, "  {}"):
+			empty = true
+			continue
+		case strings.HasPrefix(l, "   ") || strings.HasPrefix(l, "  #"):
+			continue
+		}
+		live++
+		next := ""
+		for _, m := range lines[i+1:] {
+			if !strings.HasPrefix(strings.TrimSpace(m), "#") {
+				next = m
+				break
+			}
+		}
+		if !strings.HasPrefix(next, "    ") {
+			t.Errorf("starter config table %q has nothing under it", l)
+		}
+	}
+	if (live == 0) != empty {
+		t.Errorf("the starter config's tables: holds %d live tables and {} %v", live, empty)
+	}
+}
+
+// The key-shape guard decides before any key is looked up or probed, and a
+// demoted table gets the plain table's window: when its keys are listed
+// because it is too big to read whole, and when listing is turned off.
+func TestKeyShapeGuardModes(t *testing.T) {
+	admin, adminCfg := testServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	database := "prodmask_fixture_generic_modes"
+	if err := fixture.Build(ctx, admin, "generic", database, fixture.Options{Canary: canary}); err != nil {
+		t.Fatalf("build fixture: %v", err)
+	}
+	// 30,000 rows keyed by eight people's names, with the key column indexed.
+	db := "`" + database + "`."
+	setup := "CREATE TABLE " + db + "kv_big (id int NOT NULL AUTO_INCREMENT, `key` varchar(191) NOT NULL, value text, " +
+		"PRIMARY KEY (id), KEY k (`key`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;" +
+		"CREATE TABLE " + db + "digits (d int);" +
+		"INSERT INTO " + db + "digits VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);" +
+		"INSERT INTO " + db + "kv_big (`key`, value) SELECT ELT(1 + (a.d + 10*b.d) % 8, 'Jane Doe', 'John Roe', 'Ann Lee', " +
+		"'Bob Ray', 'Tim Fox', 'Maria Day', 'Helen Smith', 'Kostas Ioannou'), '+30 210 555 0100' " +
+		"FROM " + db + "digits a, " + db + "digits b, " + db + "digits c, " + db + "digits d, " + db + "digits e " +
+		"WHERE a.d + 10*b.d + 100*c.d + 1000*d.d + 10000*e.d < 30000;" +
+		"DROP TABLE " + db + "digits"
+	if _, err := admin.ExecContext(ctx, setup); err != nil {
+		t.Fatalf("build kv_big: %v", err)
+	}
+	rows, err := admin.QueryContext(ctx, "ANALYZE TABLE "+db+"kv_big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	sess := openScan(ctx, t, adminCfg, database)
+	if !sess.ServerTimeout {
+		t.Skip("the server enforces no statement timeout, so keys aren't listed")
+	}
+	summary := func(res *model.Result, name string) model.TableSummary {
+		for _, ts := range res.Tables {
+			if ts.Name == name {
+				return ts
+			}
+		}
+		return model.TableSummary{}
+	}
+	opts := scan.Options{SampleRows: 30, MetaSampleRows: 300, Samples: true, Preset: "auto", Version: "test"}
+	res, err := scan.Run(ctx, sess, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Listed and demoted: no lookups, and the plain table's 30-row window.
+	if ts := summary(res, "kv_big"); ts.Kind != "table" || ts.RowsSampled != 30 {
+		t.Errorf("listed: kind %q, %d rows sampled, want a plain table and 30 rows", ts.Kind, ts.RowsSampled)
+	}
+	if f := weakFindingAt(res, "kv_big", "key", model.CatPersonName); f == nil || f.Confidence != model.ConfidenceLow {
+		t.Errorf("kv_big.key: got %+v, want the people's names at low confidence", f)
+	}
+	opts.SampleKeysOnly = true
+	if res, err = scan.Run(ctx, sess, opts); err != nil {
+		t.Fatal(err)
+	}
+	// Sampled and demoted: no probes, and no word of sampled keys.
+	for _, name := range []string{"kv", "kv_big"} {
+		if ts := summary(res, name); ts.Kind != "table" {
+			t.Errorf("sampled: %s is a %q, want a plain table", name, ts.Kind)
+		}
+	}
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "kv was") || strings.Contains(w, "kv_big") || strings.Contains(w, "keys of kv ") {
+			t.Errorf("warning about a demoted table: %s", w)
+		}
+	}
+	// Keys read from the window alone stay hidden: form_entries holds the
+	// canary in a key.
+	if ts := summary(res, "form_entries"); ts.Kind != "key/value" || ts.HiddenKeys == 0 {
+		t.Errorf("sampled: form_entries is a %q with %d hidden keys", ts.Kind, ts.HiddenKeys)
+	}
+	outputs := render(t, res)
+	for name, out := range outputs {
+		if strings.Contains(out, canary) {
+			t.Errorf("the %s output of the sampled scan contains a sampled value", name)
+		}
+	}
+	checkConfigTables(t, outputs["yml"])
 }
 
 // configTable returns one table's section of a starter config.
@@ -592,6 +861,7 @@ func TestWordPressLookups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkGolden(t, "wp_lookups", res)
 	for _, ts := range res.Tables {
 		if ts.Name == "wp_postmeta" && ts.Keys != keys {
 			t.Errorf("wp_postmeta: %d keys read, want %d", ts.Keys, keys)
@@ -636,6 +906,7 @@ func TestWordPressSampled(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			checkGolden(t, "wp_sampled_"+name, res)
 			checkSampled(t, res)
 			if unindexed {
 				checkProbeLimits(ctx, t, sess, db)
