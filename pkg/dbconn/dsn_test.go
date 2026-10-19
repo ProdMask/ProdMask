@@ -1,6 +1,7 @@
 package dbconn
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -50,6 +51,22 @@ func TestParseDSNErrors(t *testing.T) {
 			continue
 		}
 		if strings.Contains(err.Error(), "pw") {
+			t.Errorf("%q: error repeats the password: %v", in, err)
+		}
+	}
+	// The driver's own errors quote parts of these, password included.
+	for in, password := range map[string]string{
+		"root:hunter2/shop":                          "hunter2",
+		"ro:pa/ss@tcp(h)":                            "ro:pa",
+		"ro:s3cr3t@tcp(db:3306/shop":                 "s3cr3t",
+		"mysql://ro:pw@db:3306/shop?timeout=forever": "pw",
+	} {
+		_, err := ParseDSN(in, "")
+		if !errors.Is(err, ErrBadDSN) {
+			t.Errorf("%q: got %v, want ErrBadDSN", in, err)
+			continue
+		}
+		if strings.Contains(err.Error(), password) || strings.Contains(err.Error(), "ss@") {
 			t.Errorf("%q: error repeats the password: %v", in, err)
 		}
 	}

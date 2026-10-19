@@ -12,13 +12,19 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
+// ErrBadDSN is returned for a DSN that doesn't parse. The driver's own
+// errors quote parts of the DSN, which can be the password, so ParseDSN
+// returns this instead.
+var ErrBadDSN = errors.New("the DSN doesn't parse: expected user:password@tcp(host:port)/database or mysql://user:password@host:port/database")
+
 // ParseDSN reads a connection string in either of these forms:
 //
 //	mysql://user:pass@host:3306/dbname?tls=true
 //	user:pass@tcp(host:3306)/dbname?tls=true
 //
 // The URL form also accepts ?socket=/path/to/mysqld.sock. When the DSN has no
-// password, password (usually from PRODMASK_PASSWORD) is used instead.
+// password, password (usually from PRODMASK_PASSWORD) is used instead. Its
+// errors never quote the DSN.
 func ParseDSN(dsn, password string) (*mysql.Config, error) {
 	dsn = strings.TrimSpace(dsn)
 	if dsn == "" {
@@ -30,8 +36,8 @@ func ParseDSN(dsn, password string) (*mysql.Config, error) {
 	)
 	if strings.Contains(dsn, "://") {
 		cfg, err = parseURL(dsn)
-	} else {
-		cfg, err = mysql.ParseDSN(dsn)
+	} else if cfg, err = mysql.ParseDSN(dsn); err != nil {
+		err = ErrBadDSN
 	}
 	if err != nil {
 		return nil, err
@@ -49,7 +55,7 @@ func parseURL(raw string) (*mysql.Config, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
 		// url.Parse quotes the whole URL in its error, password included.
-		return nil, errors.New("invalid DSN URL: check the host and port, and percent-encode special characters in the password")
+		return nil, fmt.Errorf("%w: check the host and port, and percent-encode special characters in the password", ErrBadDSN)
 	}
 	if u.Scheme != "mysql" && u.Scheme != "mariadb" {
 		return nil, fmt.Errorf("unsupported DSN scheme %q (use mysql://)", u.Scheme)
@@ -62,7 +68,7 @@ func parseURL(raw string) (*mysql.Config, error) {
 	if len(q) > 0 {
 		// Let the driver interpret its own parameters (tls, charset, ...).
 		if cfg, err = mysql.ParseDSN("/?" + q.Encode()); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: check the parameters after ?", ErrBadDSN)
 		}
 		// Parsing filled in a default address; the TLS settings are rebuilt
 		// for the real host when the connector is created.
