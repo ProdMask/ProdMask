@@ -362,10 +362,21 @@ type Column struct {
 	DataType   string // lower case, e.g. varchar, bigint, longtext
 	ColumnType string // full type, e.g. "bigint(20) unsigned"
 	Nullable   bool
-	MaxLength  int64
-	Key        string // PRI, UNI, MUL
-	Extra      string // auto_increment, VIRTUAL GENERATED, ...
-	Comment    string
+	// MaxLength is how many characters a string column holds, or bytes for a
+	// binary one (CHARACTER_MAXIMUM_LENGTH). OctetLength is how many bytes
+	// it holds (CHARACTER_OCTET_LENGTH). Both are 0 for numbers, dates and
+	// other types that aren't strings; ENUM and SET columns have them.
+	MaxLength   int64
+	OctetLength int64
+	// Charset and Collation are a string column's character set and
+	// collation, such as utf8mb4 and utf8mb4_unicode_520_ci, ENUM and SET
+	// columns included. They are empty for other types, binary strings
+	// included.
+	Charset   string
+	Collation string
+	Key       string // PRI, UNI, MUL
+	Extra     string // auto_increment, VIRTUAL GENERATED, ...
+	Comment   string
 }
 
 // AutoIncrement reports whether the column is filled by the server.

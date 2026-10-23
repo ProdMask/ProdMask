@@ -125,6 +125,7 @@ func TestFixtures(t *testing.T) {
 			if check := moreChecks[platform]; check != nil {
 				check(ctx, t, sess)
 			}
+			checkEditorPaths(ctx, t, sess)
 
 			res := runScan(ctx, t, sess, "auto")
 			checkGolden(t, platform, res)
@@ -267,8 +268,9 @@ func checkGeneric(t *testing.T, res *model.Result) {
 	yml := outputs["yml"]
 	for _, want := range []string{"\n  # content_cache_posts:\n  #   action: truncate  # looks like a cache",
 		"\n  cache_store:\n    # action: truncate  # looks like a cache",
-		"    # 1 key not shown holds: phone number; its values are copied unmasked unless you add a rule for it " +
-			"(key column field_key, value column field_value)\n"} {
+		"    # 1 key not shown holds: phone number; the scan writes no rules for keys it can't show, so prodmask Pro gives " +
+			"its values its defaults: replaced in customer rows, kept in published content and settings except for the " +
+			"customer details it finds (key column field_key, value column field_value)\n"} {
 		if !strings.Contains(yml, want) {
 			t.Errorf("the starter config is missing %q:\n%s", want, configTable(yml, "form_entries"))
 		}

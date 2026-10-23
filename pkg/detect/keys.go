@@ -451,6 +451,11 @@ var (
 	}()
 )
 
+// KnownWord reports whether a word is one the naming rules, field names or
+// labels use, such as billing, phone or name, in any letter case. The
+// words are fixed in the scan, so a value never makes one known.
+func KnownWord(w string) bool { return keyKnownWords[strings.ToLower(w)] }
+
 // KeyWords is how the key-shape guard of a key/value table found without a
 // preset reads a stored key with a space in it.
 type KeyWords struct {

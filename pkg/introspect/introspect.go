@@ -43,24 +43,28 @@ func Load(ctx context.Context, q Querier, database string) (*model.Schema, error
 	}
 
 	rows, err = q.QueryContext(ctx, `SELECT TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, COLUMN_TYPE,
-		IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH, COLUMN_KEY, EXTRA, IFNULL(COLUMN_COMMENT, '')
+		IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH,
+		IFNULL(CHARACTER_SET_NAME, ''), IFNULL(COLLATION_NAME, ''), COLUMN_KEY, EXTRA, IFNULL(COLUMN_COMMENT, '')
 		FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ?`, database)
 	if err != nil {
 		return nil, fmt.Errorf("list columns: %w", err)
 	}
 	err = each(rows, func() error {
 		var (
-			table, nullable string
-			maxLen          sql.NullInt64
-			c               model.Column
+			table, nullable  string
+			maxLen, octetLen sql.NullInt64
+			c                model.Column
 		)
 		if err := rows.Scan(&table, &c.Name, &c.Position, &c.DataType, &c.ColumnType,
-			&nullable, &maxLen, &c.Key, &c.Extra, &c.Comment); err != nil {
+			&nullable, &maxLen, &octetLen, &c.Charset, &c.Collation, &c.Key, &c.Extra, &c.Comment); err != nil {
 			return err
 		}
 		c.DataType = strings.ToLower(c.DataType)
 		c.Nullable = nullable == "YES"
 		c.MaxLength = maxLen.Int64
+		c.OctetLength = octetLen.Int64
+		c.Charset = strings.ToLower(c.Charset)
+		c.Collation = strings.ToLower(c.Collation)
 		if t := byName[table]; t != nil {
 			t.Columns = append(t.Columns, &c)
 		}

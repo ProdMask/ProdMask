@@ -335,9 +335,9 @@ func Write(w io.Writer, res *model.Result) error {
 	return b.Flush()
 }
 
-// hiddenNote says what a table's hidden keys hold, and that their values
-// stay as they are unless the user writes rules for them by hand. It stays
-// on one line, whatever the column names hold.
+// hiddenNote says what a table's hidden keys hold, that the scan writes no
+// rules for them, and what prodmask Pro gives their values instead. It
+// stays on one line, whatever the column names hold.
 func hiddenNote(t *tableConf) string {
 	cats := append([]string(nil), t.hiddenCats...)
 	sort.Strings(cats)
@@ -345,11 +345,13 @@ func hiddenNote(t *tableConf) string {
 	if what == "" {
 		what = "personal data"
 	}
-	note := fmt.Sprintf("%d keys not shown hold: %s; their values are copied unmasked unless you add rules for them "+
-		"(key column %s, value column %s)", t.hidden, what, t.keyCol, t.valCol)
+	note := fmt.Sprintf("%d keys not shown hold: %s; the scan writes no rules for keys it can't show, so prodmask Pro "+
+		"gives their values its defaults: replaced in customer rows, kept in published content and settings except for "+
+		"the customer details it finds (key column %s, value column %s)", t.hidden, what, t.keyCol, t.valCol)
 	if t.hidden == 1 {
-		note = fmt.Sprintf("1 key not shown holds: %s; its values are copied unmasked unless you add a rule for it "+
-			"(key column %s, value column %s)", what, t.keyCol, t.valCol)
+		note = fmt.Sprintf("1 key not shown holds: %s; the scan writes no rules for keys it can't show, so prodmask Pro "+
+			"gives its values its defaults: replaced in customer rows, kept in published content and settings except for "+
+			"the customer details it finds (key column %s, value column %s)", what, t.keyCol, t.valCol)
 	}
 	return strings.Join(strings.Fields(note), " ")
 }

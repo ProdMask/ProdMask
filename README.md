@@ -128,7 +128,7 @@ The report warns when the user it runs as could change the database.
 - the inferred relationships;
 - the settings to neutralise.
 
-Weak matches appear commented out, and so do suggestions such as emptying a table that looks like a cache. Keys shown as `(key hidden)` get no rule; a comment says what they hold, and their values stay as they are until you add rules for them. The file's header explains patterns and paths. Review every line: the config is a starting point, not a guarantee.
+Weak matches appear commented out, and so do suggestions such as emptying a table that looks like a cache. Keys shown as `(key hidden)` get no rule, since no rule could name them without printing them; a comment says what they hold. The file's header explains patterns and paths, and [docs/config.md](docs/config.md) describes every section, including the ones prodmask Pro reads. Review every line: the config is a starting point, not a guarantee.
 
 ## Development
 

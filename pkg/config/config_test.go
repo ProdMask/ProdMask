@@ -293,8 +293,9 @@ func TestWriteSuggestionsAndHiddenKeys(t *testing.T) {
 			Severity: model.SeverityHigh, Confidence: model.ConfidenceMedium, Mask: "fake_email"},
 	}
 	yml = write(&model.Result{Database: "site", Tables: []model.TableSummary{entries}, Findings: hidden})
-	want := "  # form_entries:\n  #   # 2 keys not shown hold: email address, phone number; their values are copied " +
-		"unmasked unless you add rules for them (key column field_key, value column field_value)\n"
+	want := "  # form_entries:\n  #   # 2 keys not shown hold: email address, phone number; the scan writes no rules for " +
+		"keys it can't show, so prodmask Pro gives their values its defaults: replaced in customer rows, kept in published " +
+		"content and settings except for the customer details it finds (key column field_key, value column field_value)\n"
 	if !strings.Contains(yml, want) || strings.Contains(yml, "(key hidden)") {
 		t.Errorf("hidden keys only:\n%s", yml)
 	}
