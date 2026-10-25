@@ -122,6 +122,7 @@ The report warns when the user it runs as could change the database.
 `--config-out prodmask.yml` turns the findings into a starting point for masking:
 
 - a strategy per column, meta key or JSON path (`fake_email`, `fake_phone`, `hash`, `null`, …), with a different one for some rows where a platform needs it, such as the WooCommerce orders among WordPress posts;
+- `hash` instead of `null` or `empty` in a column with a unique index, where those would give every row the same value, with a comment that says why;
 - one rule per family of keys, written as a pattern such as `"um_cache_userdata_*": delete`, where `*` stands for the part that varies. Caches the platform rebuilds get `delete`.
 - a `name:` rule beside `mask:` when the key names themselves hold personal data;
 - tables to empty;

@@ -21,7 +21,7 @@ var Strategies = []string{
 	"keep", "null", "empty", "hash", "delete", "redact",
 	"fake_email", "fake_phone", "fake_name", "fake_first_name", "fake_last_name", "fake_username",
 	"fake_street", "fake_postcode", "fake_city", "fake_company", "fake_iban", "fake_ip",
-	"fake_user_agent", "fake_date", "test_card", "staging_password",
+	"fake_user_agent", "fake_date", "test_card", "fake_number", "staging_password",
 }
 
 type rule struct {

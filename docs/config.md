@@ -78,8 +78,8 @@ Each rule in `tables`, `rules` and `rows` names one of these:
 | Mask | What the copy writes |
 |---|---|
 | `keep` | the value as it is, except that secrets, and the customer details Pro finds in kept text, are replaced |
-| `null` | NULL; in a NOT NULL column, the type's empty value |
-| `empty` | the type's empty value: `''`, `0`, a zero date, JSON `null` |
+| `null` | NULL; in a NOT NULL column, the type's empty value. Not for a NOT NULL column of a unique index (see [Unique values](#unique-values)) |
+| `empty` | the type's empty value: `''`, `0`, a zero date, JSON `null`. Not for a column of a unique index (see [Unique values](#unique-values)) |
 | `delete` | in a key/value table, no row at all |
 | `hash` | a keyed hash of the value, as lower-case hex |
 | `redact` | generated text of about the same length |
@@ -87,11 +87,14 @@ Each rule in `tables`, `rules` and `rows` names one of these:
 | `fake_street`, `fake_postcode`, `fake_city`, `fake_company` | a generated address part or company name |
 | `fake_iban`, `fake_ip`, `fake_user_agent`, `fake_date` | a generated IBAN, IP address, browser user agent, or a date moved by up to a year (one that reads either way, such as 05/06/1990, moves by whole years) |
 | `test_card` | a card number payment providers publish for testing; in a unique column, a valid number that starts as one does |
+| `fake_number` | a generated number of the original's shape, within the column's range, for a number column (see below) |
 | `staging_password` | the staging password, hashed the way the original was |
 
 Pro also reads `keep_if_integer`, `keep_if_decimal`, `keep_if_date`, `keep_if_boolean` and `keep_if_uuid`: the value is kept when it has that shape, checked value by value, and gets its row's default otherwise.
 
-Generated values fit the column. Emails use the reserved domain `example.com`. Phones keep their layout and use fiction ranges where they can: 07700 900xxx for UK mobiles and 555-01xx for North American numbers. Other phone numbers, and those in unique columns, are random numbers that look real. A phone or card column's value keeps only its number's layout: any text beside the number is dropped. IP addresses come from the ranges reserved for documentation, and for unique columns from 198.18.0.0/15, which is reserved for benchmarking and never routed.
+Generated values fit the column. Emails use the reserved domain `example.com`. Phones keep their layout and use fiction ranges where they can: 07700 900xxx for UK mobiles and 555-01xx for North American numbers. Other phone numbers, and those in unique columns, are random numbers that look real. A phone or card column's value keeps only its number's layout: any text beside the number is dropped. IP addresses come from the ranges reserved for documentation, and for unique columns from 198.18.0.0/15, which is reserved for benchmarking and never routed. An INT UNSIGNED or BIGINT column that holds IPv4 addresses as numbers, as `INET_ATON` writes them, gets numbers too.
+
+A number column takes only numbers. Where the data's own fake isn't one, such as a postcode stored as an `INT`, or an account number or an IMEI stored as a `BIGINT`, the starter config writes `fake_number`, with a comment that says why. Pro does the same for the rules it chooses itself: a fake that can't fit its column becomes `fake_number` in a number column, `hash` in a text or binary one, and `null` in the others, and the lock says so. A rule you write that can't fit is your own: `prodmask plan` names the column and the line until you change it.
 
 ## tables
 
@@ -283,6 +286,8 @@ A copy leaves out views that read other schemas, since they would read the other
 ## Unique values
 
 Generated values stay unique where the column has a unique index, and where an application keeps values unique without one, such as WordPress's logins, emails and nicenames. Values compare ignoring case and accents, as the common collations do. Where a collation equates more, such as `general_ci` with `ß` and `s`, a generated value could still meet a kept one: under an index the copy then stops with an error naming the column; without an index, such as the application-level uniques, it would pass unnoticed. Both are rare, since generated unique values end in random characters.
+
+A unique column can't hold the same value in every row, so `null` in a NOT NULL one, and `empty` in any, would make the copy fail on its second row. Where the column holds text or bytes, the starter config writes `hash` instead, with a comment that says why, as for Laravel's API tokens and Cashier's Stripe IDs. Pro does the same for the rules it chooses itself, and the lock says so. A `null` or `empty` you write for such a column is your own: Pro won't copy with it, and `prodmask plan` names the column and the line, until you give it a rule that keeps the values apart, such as `hash`. With `mode: stable`, a value hashes the same way in every copy, so someone who holds the key could check a guess against it; `mode: per_run` avoids that.
 
 ## What a copy keeps as it is
 

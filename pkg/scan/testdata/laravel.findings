@@ -16,11 +16,11 @@ orders	shipping_address		phone		phone	high	high	fake_phone
 orders	shipping_address		postcode		postcode	medium	medium	fake_postcode
 password_reset_tokens	email				email	high	high	fake_email
 password_reset_tokens	token				secret	high	medium	null
-personal_access_tokens	token				secret	high	medium	null
+personal_access_tokens	token				secret	high	medium	hash
 sessions	ip_address				ip_address	medium	high	fake_ip
 sessions	payload				session_data	medium	high	null
 sessions	user_agent				user_agent	medium	high	fake_user_agent
-subscriptions	stripe_id				payment_token	high	high	null
+subscriptions	stripe_id				payment_token	high	high	hash
 users	email				email	high	high	fake_email
 users	name				person_name	medium	medium	fake_name
 users	password				password_hash	high	high	staging_password

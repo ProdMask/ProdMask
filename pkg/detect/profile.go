@@ -1,9 +1,11 @@
 package detect
 
 import (
+	"math"
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -87,6 +89,10 @@ type Profile struct {
 	// across rows (LOCKED, ldap) from passwords people typed.
 	pw      [pwKinds][2]int
 	pwMarks map[uint64]int
+	// ipNumbers counts the whole numbers that read as IPv4 addresses
+	// written as numbers (ipNumber). They count as addresses only in a
+	// column whose name says it holds them.
+	ipNumbers int
 
 	Structured int
 	Paths      map[string]*Profile
@@ -275,6 +281,9 @@ func (p *Profile) addScalar(t string) {
 	if reDigitsOnly.MatchString(t) {
 		p.Whole++
 	}
+	if ipNumber(t) {
+		p.ipNumbers++
+	}
 	if opaque(t) {
 		p.Opaque++
 	}
@@ -393,6 +402,18 @@ func (p *Profile) addSecret(h SecretHit) {
 	default:
 		c.Unknown++
 	}
+}
+
+// ipNumber reports a whole number that reads as an IPv4 address written as
+// its 32-bit number, as INET_ATON writes it, or as a signed 32-bit number,
+// as PHP's ip2long can: from -2147483648 to 4294967295, but 0.0.0.0 and
+// the loopback range, which say nothing of anyone, as localIP says.
+func ipNumber(t string) bool {
+	n, err := strconv.ParseInt(t, 10, 64)
+	if err != nil || n < math.MinInt32 || n > math.MaxUint32 || n == 0 {
+		return false
+	}
+	return uint32(n)>>24 != 127
 }
 
 // fieldName reports whether a value looks like a field name rather than

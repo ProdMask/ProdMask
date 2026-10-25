@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,31 @@ func TestWrite(t *testing.T) {
 	}
 	if strings.Contains(out, "orders.user_id") {
 		t.Error("declared foreign keys belong to the schema, not the config")
+	}
+}
+
+// fake_number is a strategy of its own, which the starter config writes for
+// a number column whose category's fake isn't a number.
+func TestWriteFakeNumber(t *testing.T) {
+	if !slices.Contains(Strategies, "fake_number") {
+		t.Fatalf("no fake_number among %v", Strategies)
+	}
+	res := &model.Result{Version: "test", Database: "shop", GeneratedAt: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC),
+		Findings: []model.Finding{{Table: "members", Column: "zip", Category: model.CatPostcode, Severity: model.SeverityMedium,
+			Confidence: model.ConfidenceMedium, Mask: "fake_number", Note: "stored as a number, which a fake postcode wouldn't fit"}}}
+	var b bytes.Buffer
+	if err := Write(&b, res); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	checkTables(t, out)
+	for _, want := range []string{
+		"# Masking strategies: " + strings.Join(Strategies, ", ") + "\n",
+		"\n      zip: fake_number  # postcode, medium confidence; stored as a number, which a fake postcode wouldn't fit\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("config is missing %q:\n%s", want, out)
+		}
 	}
 }
 

@@ -215,24 +215,125 @@ func TestAnalyzeBirthdayParts(t *testing.T) {
 	}
 }
 
-// Device IDs need opaque values to be sure of them.
+// Device IDs need opaque values to be sure of them. An IMEI stored as a
+// number gets a number, which a hash wouldn't be.
 func TestAnalyzeDeviceIDs(t *testing.T) {
 	for _, c := range []struct {
 		column, dataType string
 		values           []string
 		conf             model.Confidence
+		mask             string
 	}{
-		{"machine_id", "varchar", []string{"CNC-01", "CNC-02", "LATHE-3"}, model.ConfidenceLow},
-		{"imei", "bigint", []string{"356938035643809", "490154203237518"}, model.ConfidenceHigh},
-		{"hwid", "text", repeat(3, strings.Repeat("9f8e7d6c", 4)), model.ConfidenceHigh},
-		{"hwid", "text", repeat(3, "{A3BB189E-8BF9-4888-9912-ACE4E6543002}"), model.ConfidenceHigh},
-		{"hwid", "text", repeat(3, "0A1B2C3D-4E5F-4061-8273-94A5B6C7D8E9|00:1A:2B:3C:4D:5E"), model.ConfidenceHigh},
+		{"machine_id", "varchar", []string{"CNC-01", "CNC-02", "LATHE-3"}, model.ConfidenceLow, "hash"},
+		{"imei", "bigint", []string{"356938035643809", "490154203237518"}, model.ConfidenceHigh, "fake_number"},
+		{"hwid", "text", repeat(3, strings.Repeat("9f8e7d6c", 4)), model.ConfidenceHigh, "hash"},
+		{"hwid", "text", repeat(3, "{A3BB189E-8BF9-4888-9912-ACE4E6543002}"), model.ConfidenceHigh, "hash"},
+		{"hwid", "text", repeat(3, "0A1B2C3D-4E5F-4061-8273-94A5B6C7D8E9|00:1A:2B:3C:4D:5E"), model.ConfidenceHigh, "hash"},
 	} {
 		fs := Analyze(subject("members", c.column, c.dataType), namedProfile(c.column, c.values...))
 		f := find(fs, model.CatDeviceID, "")
-		if f == nil || f.Confidence != c.conf || f.Mask != "hash" {
+		if f == nil || f.Confidence != c.conf || f.Mask != c.mask {
 			t.Errorf("%s %v: got %+v", c.column, c.values, fs)
 		}
+	}
+}
+
+// A number column takes only numbers: where a category's fake isn't one,
+// the finding suggests fake_number, a number of the original's shape, and
+// says why. Phones and cards stay, and so do the masks that make no fake,
+// and an IP address in an INT or a BIGINT, which a copy writes as its
+// number; one in a smaller integer column gets a number too. Text keeps its
+// fakes.
+func TestAnalyzeNumberColumns(t *testing.T) {
+	const note = "stored as a number, which a fake "
+	for _, c := range []struct {
+		column, dataType string
+		values           []string
+		cat              model.Category
+		mask             string
+	}{
+		{"zip", "int", []string{"10115", "8542", "30001"}, model.CatPostcode, "fake_number"},
+		{"postcode", "mediumint", []string{"10115", "8542", "30001"}, model.CatPostcode, "fake_number"},
+		{"account_number", "bigint", []string{"12345678901", "98765432109"}, model.CatBankAccount, "fake_number"},
+		{"imei", "bigint", []string{"356938035643809", "490154203237518"}, model.CatDeviceID, "fake_number"},
+		{"mobile", "bigint", []string{"12125550101", "12125550102", "12125550103"}, model.CatPhone, "fake_phone"},
+		{"card_number", "bigint", []string{"4242424242424242", "5555555555554444"}, model.CatCardNumber, "test_card"},
+		{"gender", "int", []string{"1", "2", "1"}, model.CatGender, "keep"},
+		{"birth_year", "int", []string{"1985", "1990", "2001"}, model.CatDateOfBirth, "null"},
+		{"lat", "decimal", []string{"37.9838", "40.6401"}, model.CatGeo, "null"},
+		{"last_ip", "int", []string{"3232235777", "167772161", "2886729729"}, model.CatIPAddress, "fake_ip"},
+		{"remote_ip", "bigint", []string{"3232235777", "167772161", "2886729729"}, model.CatIPAddress, "fake_ip"},
+		{"ip", "smallint", nil, model.CatIPAddress, "fake_number"},
+		{"zip", "varchar", []string{"10115", "8542", "30001"}, model.CatPostcode, "fake_postcode"},
+		{"account_number", "varchar", []string{"12345678901", "98765432109"}, model.CatBankAccount, "fake_iban"},
+	} {
+		sub := subject("members", c.column, c.dataType)
+		var p *Profile
+		if c.values == nil {
+			sub.Sampled = false
+		} else {
+			p = namedProfile(c.column, c.values...)
+		}
+		f := find(Analyze(sub, p), c.cat, "")
+		if f == nil || f.Confidence == model.ConfidenceLow || f.Mask != c.mask || strings.Contains(f.Note, note) != (c.mask == "fake_number") {
+			t.Errorf("%s %s: got %+v", c.column, c.dataType, f)
+		}
+	}
+	// Unsampled, the name decides alone.
+	sub := subject("members", "zip", "int")
+	sub.Sampled = false
+	if f := find(Analyze(sub, nil), model.CatPostcode, ""); f == nil || f.Mask != "fake_number" {
+		t.Errorf("an unsampled INT zip: got %+v", f)
+	}
+	// A preset's masks for some of the rows take numbers too, with the same
+	// note, but those that make no fake; the preset's own stay as they were.
+	rows := []model.RowMask{{Where: "kind = 'shop'", Mask: "fake_postcode"}, {Where: "kind = 'staff'", Mask: "keep"}}
+	sub = subject("members", "zip", "int")
+	sub.Hint = &Hint{Category: model.CatPostcode, Mask: "fake_postcode", Rows: rows, Source: "preset:test"}
+	f := find(Analyze(sub, namedProfile("zip", "10115", "8542", "30001")), model.CatPostcode, "")
+	if f == nil || f.Mask != "fake_number" || len(f.RowMasks) != 2 || f.RowMasks[0].Mask != "fake_number" ||
+		!strings.Contains(f.RowMasks[0].Note, note) || f.RowMasks[1].Mask != "keep" || f.RowMasks[1].Note != "" {
+		t.Errorf("an INT zip with a preset's row masks: got %+v", f)
+	}
+	if rows[0].Mask != "fake_postcode" || rows[0].Note != "" {
+		t.Errorf("the preset's row masks changed: %+v", rows)
+	}
+}
+
+// Whole numbers in an IP-named INT or BIGINT column read as IPv4 addresses
+// written as numbers, unsigned as INET_ATON writes them or signed as
+// ip2long can: they make a confident IP finding. 0.0.0.0 and loopback ones
+// don't count, and nor does a number past 32 bits, or one in a column whose
+// name says nothing of IP addresses or whose type can't hold one.
+func TestAnalyzeIPNumbers(t *testing.T) {
+	for _, c := range []struct {
+		column, dataType string
+		values           []string
+		conf             model.Confidence
+	}{
+		{"last_ip", "int", []string{"3232235777", "167772161", "2886729729", "3405803777"}, model.ConfidenceHigh},
+		{"ip", "bigint", []string{"3232235777", "167772161", "2886729729"}, model.ConfidenceHigh},
+		{"user_ip", "int", []string{"-1062731519", "-1408237567", "167772161"}, model.ConfidenceHigh},
+		{"user_ip", "int", []string{"3232235777", "0", "2130706433", "2130706434"}, model.ConfidenceMedium},
+		{"user_ip", "bigint", []string{"4294967296", "9999999999", "3232235777"}, model.ConfidenceMedium},
+		{"user_ip", "int", []string{"0", "2130706433"}, model.ConfidenceLow},
+		{"ip", "smallint", []string{"3", "17", "255"}, model.ConfidenceLow},
+		{"ip", "varchar", []string{"3232235777", "167772161", "2886729729"}, model.ConfidenceLow},
+	} {
+		fs := Analyze(subject("logins", c.column, c.dataType), namedProfile(c.column, c.values...))
+		f := find(fs, model.CatIPAddress, "")
+		if f == nil || f.Confidence != c.conf {
+			t.Errorf("%s %s %v: got %+v", c.column, c.dataType, c.values, fs)
+			continue
+		}
+		if c.conf > model.ConfidenceLow && !strings.Contains(strings.Join(f.Reasons, "; "), "read as IP addresses written as numbers") {
+			t.Errorf("%s %s: reasons %v", c.column, c.dataType, f.Reasons)
+		}
+	}
+	// Numbers in a column no name rule calls an IP's are no addresses.
+	if f := find(Analyze(subject("orders", "total", "int"), namedProfile("total", "3232235777", "167772161", "2886729729")),
+		model.CatIPAddress, ""); f != nil {
+		t.Errorf("numbers read as IP addresses: %+v", f)
 	}
 }
 

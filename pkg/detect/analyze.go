@@ -80,7 +80,9 @@ func Analyze(sub Subject, p *Profile) []model.Finding {
 	}
 	base := model.Finding{Table: sub.Table, Column: sub.Column, MetaKey: sub.MetaKey,
 		Keys: sub.Keys, KeysPartial: sub.KeysPartial, Where: sub.Where}
-	st := state{sampled: sub.Sampled, setting: sub.Setting, skipped: sub.Skipped, table: sub.Context, tc: tc}
+	dt := strings.ToLower(sub.DataType)
+	st := state{sampled: sub.Sampled, setting: sub.Setting, skipped: sub.Skipped, table: sub.Context, tc: tc,
+		ints: dt == "int" || dt == "integer" || dt == "bigint"}
 	out := judge(base, nm, source, tokens, p, st, hint)
 	if p != nil && len(p.Paths) > 0 {
 		paths := judgePaths(base, sub.Context, Tokens(sub.Name), p)
@@ -161,6 +163,9 @@ type state struct {
 	table   []string
 	near    []string // for a path: the words of its column or meta key, and of the keys above it
 	tc      typeClass
+	// ints marks an INT or BIGINT column, which can hold an IPv4 address
+	// as its 32-bit number.
+	ints bool
 }
 
 // Categories judged by name alone that numbers or code identifiers cannot be.
@@ -195,13 +200,18 @@ func appendNote(note, more string) string {
 
 // support says how many sampled values back up a category, and whether
 // the category can be checked from values at all.
-func support(nm *NameMatch, p *Profile) (int, bool) {
+func support(nm *NameMatch, p *Profile, st state) (int, bool) {
 	switch nm.Category {
 	case model.CatEmail:
 		return p.Email, true
 	case model.CatPhone:
 		return p.Phone, true
 	case model.CatIPAddress:
+		if st.ints {
+			// An IP-named INT or BIGINT holds addresses as their numbers, as
+			// INET_ATON writes them.
+			return p.IP + p.ipNumbers, true
+		}
 		return p.IP, true
 	case model.CatCardNumber:
 		return p.Card, true
@@ -287,6 +297,7 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		numeric := nm.Category == model.CatDateOfBirth && hint == nil &&
 			(st.tc&tInt != 0 || (p != nil && p.Whole > 0 && p.Whole == p.NonEmpty))
 		part := numeric && (p == nil || p.MaxDigits <= 4)
+		label := nm.Category.Label()
 		switch {
 		case part:
 			f.Mask = "null"
@@ -294,8 +305,20 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 		case numeric:
 			f.Mask = "null"
 			f.Note = appendNote(f.Note, "a birth date stored as a number, which a fake date wouldn't fit")
+		case st.tc&(tInt|tNum) != 0 && !numberMask(f.Mask, st):
+			// A number column takes only numbers: a postcode in an INT, or an
+			// account number or an IMEI in a BIGINT, gets a number of the
+			// original's shape instead of a fake of its kind.
+			f.Mask = "fake_number"
+			f.Note = appendNote(f.Note, "stored as a number, which a fake "+label+" wouldn't fit")
 		}
-		label := nm.Category.Label()
+		// A preset's masks for some of the rows take only numbers too.
+		for j := range f.RowMasks {
+			if rm := &f.RowMasks[j]; st.tc&(tInt|tNum) != 0 && !numberMask(rm.Mask, st) {
+				rm.Mask = "fake_number"
+				rm.Note = appendNote(rm.Note, "stored as a number, which a fake "+label+" wouldn't fit")
+			}
+		}
 		switch {
 		case nm.Category == model.CatFreeText && st.sampled && (p == nil || p.NonEmpty == 0):
 			f.Confidence = model.ConfidenceLow
@@ -317,7 +340,7 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 			if hint == nil && nm.Password && judgePassword(&f, nm, tokens, p, st) {
 				break
 			}
-			m, checkable := support(nm, p)
+			m, checkable := support(nm, p, st)
 			if checkable {
 				f.Matched = m
 				r := ratio(m, p.NonEmpty)
@@ -337,7 +360,11 @@ func judge(base model.Finding, nm *NameMatch, source string, tokens []string, p 
 					f.Confidence = model.ConfidenceMedium
 				}
 				if m > 0 {
-					f.Reasons = append(f.Reasons, fmt.Sprintf("%d of %d sampled values match the %s format", m, p.NonEmpty, label))
+					format := "match the " + label + " format"
+					if nm.Category == model.CatIPAddress && st.ints {
+						format = "read as IP addresses written as numbers"
+					}
+					f.Reasons = append(f.Reasons, fmt.Sprintf("%d of %d sampled values %s", m, p.NonEmpty, format))
 				}
 			} else if hint != nil {
 				f.Confidence = model.ConfidenceHigh
@@ -745,6 +772,20 @@ func judgePaths(base model.Finding, ctx, field []string, p *Profile) []model.Fin
 		out = out[:maxPathFindings]
 	}
 	return out
+}
+
+// numberMask reports a mask a number column can take: one that makes no
+// fake, or a fake that is a number there, a phone's, a card's or
+// fake_number's, and in an INT or a BIGINT an IPv4 address's, written as
+// its number.
+func numberMask(mask string, st state) bool {
+	switch mask {
+	case "fake_phone", "test_card", "fake_number":
+		return true
+	case "fake_ip":
+		return st.ints
+	}
+	return !strings.HasPrefix(mask, "fake_") && mask != "hash" && mask != "redact"
 }
 
 func maskFor(c model.Category, tokens []string) string {

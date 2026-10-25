@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -764,6 +765,94 @@ func TestKeyShapeGuardModes(t *testing.T) {
 	checkConfigTables(t, outputs["yml"])
 }
 
+// TestNumberColumns checks the masks of number columns on a table of the
+// test's own: a postcode in an INT UNSIGNED, and an account number and an
+// IMEI in a BIGINT, suggest fake_number in every output, with a note that
+// says why, since a fake of their kind isn't a number; integers in an
+// IP-named INT UNSIGNED read as IPv4 addresses, a confident finding whose
+// mask, fake_ip, a copy writes as a number; and a phone stored as a BIGINT
+// keeps fake_phone.
+func TestNumberColumns(t *testing.T) {
+	admin, adminCfg := testServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	const database = "prodmask_fixture_numbers"
+	q := "`" + database + "`."
+	for _, s := range []string{
+		"DROP DATABASE IF EXISTS `" + database + "`",
+		"CREATE DATABASE `" + database + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+		"CREATE TABLE " + q + "members (id int NOT NULL AUTO_INCREMENT PRIMARY KEY, zip int unsigned, account_number bigint, " +
+			"imei bigint unsigned, last_ip int unsigned, mobile bigint) ENGINE=InnoDB",
+		"INSERT INTO " + q + "members (zip, account_number, imei, last_ip, mobile) VALUES " +
+			"(10115, 12345678901, 356938035643809, 3232235777, 12125550101), " +
+			"(8542, 98765432109, 490154203237518, 167772161, 12125550102), " +
+			"(30001, 11223344556, 352099001761481, 2886729729, 12125550103)",
+	} {
+		if _, err := admin.ExecContext(ctx, s); err != nil {
+			t.Fatalf("build the table: %v", err)
+		}
+	}
+	res := runScan(ctx, t, openScan(ctx, t, adminCfg, database), "auto")
+	outputs := render(t, res)
+	var report struct {
+		Findings []struct {
+			Table, Column, Path, Note, Category, Confidence string
+			MetaKey                                         string   `json:"meta_key"`
+			Mask                                            string   `json:"suggested_mask"`
+			Reasons                                         []string `json:"reasons"`
+		}
+	}
+	if err := json.Unmarshal([]byte(outputs["json"]), &report); err != nil {
+		t.Fatal(err)
+	}
+	const note = "stored as a number, which a fake "
+	for _, c := range []struct{ column, category, mask string }{
+		{"zip", "postcode", "fake_number"}, {"account_number", "bank_account", "fake_number"},
+		{"imei", "device_id", "fake_number"}, {"last_ip", "ip_address", "fake_ip"}, {"mobile", "phone", "fake_phone"},
+	} {
+		number := c.mask == "fake_number"
+		found := 0
+		for _, f := range report.Findings {
+			if f.Table != "members" || f.Column != c.column || f.MetaKey != "" || f.Path != "" {
+				continue
+			}
+			found++
+			if f.Category != c.category || f.Mask != c.mask || f.Confidence == "low" || strings.Contains(f.Note, note) != number {
+				t.Errorf("the JSON report's members.%s: %s %s, %s confidence, note %q", c.column, f.Category, f.Mask, f.Confidence, f.Note)
+			}
+			if c.column == "last_ip" && (f.Confidence != "high" ||
+				!strings.Contains(strings.Join(f.Reasons, "; "), "3 of 3 sampled values read as IP addresses written as numbers")) {
+				t.Errorf("the JSON report's members.last_ip: %s confidence, reasons %q", f.Confidence, f.Reasons)
+			}
+		}
+		if found != 1 {
+			t.Errorf("the JSON report has %d findings for members.%s", found, c.column)
+		}
+		line := ""
+		for _, l := range strings.Split(configTable(outputs["yml"], "members"), "\n") {
+			if strings.HasPrefix(l, "      "+c.column+": ") {
+				line = l
+			}
+		}
+		if !strings.HasPrefix(line, "      "+c.column+": "+c.mask+"  # ") || strings.Contains(line, note) != number {
+			t.Errorf("the starter config's members.%s: %q", c.column, line)
+		}
+		rows := 0
+		for _, l := range strings.Split(outputs["md"], "\n") {
+			if strings.Contains(l, " | `members."+c.column+"` | ") {
+				rows++
+				if !strings.HasSuffix(l, " | `"+c.mask+"` |") {
+					t.Errorf("the markdown report's members.%s doesn't suggest %s", c.column, c.mask)
+				}
+			}
+		}
+		if rows != 1 {
+			t.Errorf("the markdown report has %d rows for members.%s", rows, c.column)
+		}
+	}
+	checkConfigTables(t, outputs["yml"])
+}
+
 // configTable returns one table's section of a starter config.
 func configTable(yml, table string) string {
 	start := strings.Index(yml, "\n  "+table+":\n")
@@ -838,6 +927,63 @@ func checkLaravel(t *testing.T, res *model.Result) {
 	expectRel(t, res, "notifications", "notifiable_id", "users", model.RelConfirmed)
 	expectAction(t, res, "sessions")
 	expectAction(t, res, "jobs")
+
+	// A token's and a payment ID's mask is null, which would give every row
+	// of a NOT NULL unique column the same value: there the scan suggests
+	// hash, with a note that says why, in every output. Nullable columns,
+	// and columns of no unique index, keep null.
+	const note = "hash, not null, since null would give every row of this NOT NULL unique column the same value"
+	outputs := render(t, res)
+	var report struct {
+		Findings []struct {
+			Table, Column, Path, Note string
+			MetaKey                   string `json:"meta_key"`
+			Mask                      string `json:"suggested_mask"`
+		}
+	}
+	if err := json.Unmarshal([]byte(outputs["json"]), &report); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ table, column, mask string }{
+		{"personal_access_tokens", "token", "hash"}, {"subscriptions", "stripe_id", "hash"},
+		{"users", "remember_token", "null"}, {"users", "stripe_id", "null"}, {"password_reset_tokens", "token", "null"},
+	} {
+		hashed := c.mask == "hash"
+		found := 0
+		for _, f := range report.Findings {
+			if f.Table == c.table && f.Column == c.column && f.MetaKey == "" && f.Path == "" {
+				found++
+				if f.Mask != c.mask || strings.Contains(f.Note, note) != hashed {
+					t.Errorf("the JSON report's %s.%s: %s, note %q", c.table, c.column, f.Mask, f.Note)
+				}
+			}
+		}
+		if found != 1 {
+			t.Errorf("the JSON report has %d findings for %s.%s", found, c.table, c.column)
+		}
+		line := ""
+		for _, l := range strings.Split(configTable(outputs["yml"], c.table), "\n") {
+			if strings.HasPrefix(l, "      "+c.column+": ") {
+				line = l
+			}
+		}
+		yml := map[string]string{"hash": "hash", "null": `"null"`}[c.mask]
+		if !strings.HasPrefix(line, "      "+c.column+": "+yml+"  # ") || strings.HasSuffix(line, "; "+note) != hashed {
+			t.Errorf("the starter config's %s.%s: %q", c.table, c.column, line)
+		}
+		rows := 0
+		for _, l := range strings.Split(outputs["md"], "\n") {
+			if strings.Contains(l, " | `"+c.table+"."+c.column+"` | ") {
+				rows++
+				if !strings.HasSuffix(l, " | `"+c.mask+"` |") {
+					t.Errorf("the markdown report's %s.%s doesn't suggest %s", c.table, c.column, c.mask)
+				}
+			}
+		}
+		if rows != 1 {
+			t.Errorf("the markdown report has %d rows for %s.%s", rows, c.table, c.column)
+		}
+	}
 }
 
 // buildWordPress makes a fresh copy of the WordPress fixture.
