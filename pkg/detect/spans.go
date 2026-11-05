@@ -20,7 +20,8 @@ type Span struct {
 	// Detail says more: a secret's or a password hash's kind, "strict" or
 	// "loose" for a phone number, "test" for a published test card number,
 	// "reserved" for an email address at a domain reserved for examples, and
-	// "placeholder" for a password in a URL that reads as an example.
+	// "placeholder" for a password in a URL or a Basic credential that reads
+	// as an example, or a Basic credential with no password and no key.
 	Detail string
 	Mode   string // for secrets: live, test or "" when the format does not say
 }
@@ -309,6 +310,8 @@ type secretMatch struct {
 	start, end int
 	pattern    int // its index in secretPatterns
 	mode       string
+	// placeholder marks a match the scan doesn't count, for a copy to clear.
+	placeholder bool
 }
 
 // secretMatches finds every secret in text as FindSecrets would, without
@@ -331,7 +334,7 @@ func secretMatches(text string) []secretMatch {
 			continue
 		}
 		if p.fallback && !started {
-			taken = mergeSecrets(out)
+			taken = mergeSecrets(counted(out))
 			started = true
 		}
 		for _, loc := range p.re.FindAllStringSubmatchIndex(text, -1) {
@@ -346,6 +349,13 @@ func secretMatches(text string) []secretMatch {
 			if start < 0 || start >= end {
 				continue
 			}
+			if p.basic {
+				for _, in := range readBasic(i, m) {
+					in.start, in.end = start, end
+					out = append(out, in)
+				}
+				continue
+			}
 			if p.fallback {
 				k, hit := spanAt(taken, start, end)
 				if hit {
@@ -353,37 +363,59 @@ func secretMatches(text string) []secretMatch {
 				}
 				taken = slices.Insert(taken, k, Span{Start: start, End: end})
 			}
-			out = append(out, secretMatch{start, end, i, p.mode(m)})
+			out = append(out, secretMatch{start: start, end: end, pattern: i, mode: p.mode(m)})
 		}
 	}
 	return out
 }
 
-// mergeSecrets merges overlapping matches into one span each, named after
-// the earliest pattern among them, so a secret is cleared whole whichever
-// patterns read it.
-func mergeSecrets(ms []secretMatch) []Span {
+// counted leaves out the matches the scan doesn't count.
+func counted(ms []secretMatch) []secretMatch {
+	return slices.DeleteFunc(slices.Clone(ms), func(m secretMatch) bool { return m.placeholder })
+}
+
+// mergeMatches merges overlapping matches into one each, named after the
+// earliest pattern among them, so a secret is cleared whole whichever patterns
+// read it, with the strongest mode among them: a Basic credential's live
+// password doesn't read as the test key sent with it.
+func mergeMatches(ms []secretMatch) []secretMatch {
 	ms = slices.Clone(ms)
 	sort.SliceStable(ms, func(i, j int) bool { return ms[i].start < ms[j].start })
-	var out []Span
-	first := -1 // the pattern that names the last span
+	var out []secretMatch
 	for _, m := range ms {
-		if n := len(out); n > 0 && m.start < out[n-1].End {
-			out[n-1].End = max(out[n-1].End, m.end)
-			if m.pattern < first {
-				first = m.pattern
-				out[n-1].Detail, out[n-1].Mode = secretPatterns[m.pattern].kind, m.mode
-			}
+		n := len(out)
+		if n == 0 || m.start >= out[n-1].end {
+			out = append(out, m)
 			continue
 		}
-		first = m.pattern
-		out = append(out, Span{Start: m.start, End: m.end, Kind: SpanSecret, Detail: secretPatterns[m.pattern].kind, Mode: m.mode})
+		last := &out[n-1]
+		last.end, last.pattern = max(last.end, m.end), min(last.pattern, m.pattern)
+		last.placeholder = last.placeholder && m.placeholder
+		if modeRank(m.mode) > modeRank(last.mode) {
+			last.mode = m.mode
+		}
 	}
 	return out
 }
 
-// findSecretSpans finds secrets in the scan's formats, and passwords in
-// Basic Authorization headers.
+// mergeSecrets returns the merged matches as spans.
+func mergeSecrets(ms []secretMatch) []Span {
+	var out []Span
+	for _, m := range mergeMatches(ms) {
+		detail := secretPatterns[m.pattern].kind
+		if m.placeholder {
+			detail = "placeholder"
+		}
+		out = append(out, Span{Start: m.start, End: m.end, Kind: SpanSecret, Detail: detail, Mode: m.mode})
+	}
+	return out
+}
+
+// findSecretSpans finds secrets in the scan's formats, and Basic credentials
+// in Authorization headers: the whole encoded credential is the span, named
+// after the secret inside it. A credential the scan doesn't count, which reads
+// as an example or has no password, is found all the same, as a placeholder,
+// since a copy should clear it.
 func findSecretSpans(v *TextView) []Span {
 	if len(v.Text) < 12 {
 		return nil

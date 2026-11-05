@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -186,7 +187,7 @@ func negativeCases() []string {
 		"sk-lovensko-najlepsie-hotely-a-penziony-v-tatrach",
 		"/blog/sk-hynix-q3-2024-earnings-beat-expectations-on-hbm-demand/",
 		"token: " + g.botToken("1abcdefghijklmnopq"),
-		"Authorization: Basic " + b64("nocolonhere12345"),
+		"Authorization: Basic " + b64("nocolonhere"),
 		"Authorization: Basic " + b64("admin:password"),
 		func() string {
 			u := "guest" + g.of(tAlnum, 6)
@@ -314,6 +315,224 @@ func TestFindSecretsForms(t *testing.T) {
 	}
 }
 
+// basicForms writes an encoded Basic credential in the forms logs and stored
+// requests keep it.
+func basicForms(cred string) []string {
+	return []string{
+		"Authorization: Basic " + cred,
+		"Basic " + cred,
+		"[HTTP_AUTHORIZATION] => Basic " + cred,
+		`{"Authorization":"Basic ` + cred + `"}`,
+		`{\"Authorization\":\"Basic ` + cred + `\"}`,
+		`a:1:{s:13:"Authorization";s:` + strconv.Itoa(len(cred)+6) + `:"Basic ` + cred + `";}`,
+		`{'Authorization': 'Basic ` + cred + `'}`,
+		"HTTP_AUTHORIZATION=Basic " + cred,
+	}
+}
+
+// basicKeyCase is a decoded Basic credential that holds a key, what the scan
+// must report for it, and how its span must read.
+type basicKeyCase struct{ cred, want, detail, mode string }
+
+func basicKeyCases() []basicKeyCase {
+	g := newTokGen(9)
+	live, test := "sk_"+"live_"+g.of(tAlnum, 24), "sk_"+"test_"+g.of(tAlnum, 24)
+	pw := g.mixed(tAlnum, 14)
+	const stripe = "Stripe secret key"
+	liveHit, testHit := stripe+" (live)", stripe+" (test)"
+	return []basicKeyCase{
+		// A key as the user, as Stripe's curl -u key: sends it, whatever the password.
+		{live + ":", liveHit, stripe, "live"},
+		{test + ":", testHit, stripe, "test"},
+		{live, liveHit, stripe, "live"},
+		{live + ":x", liveHit, stripe, "live"},
+		{live + ":password", liveHit, stripe, "live"},
+		{live + ":$PASSWORD", liveHit, stripe, "live"},
+		{live + ":%PASS%", liveHit, stripe, "live"},
+		{live + ":{password}", liveHit, stripe, "live"},
+		{live + ":[secret]", liveHit, stripe, "live"},
+		{live + ":<password>", liveHit, stripe, "live"},
+		{live + ":" + live, liveHit, stripe, "live"},
+		// Even in bytes that aren't text, as echo's newline leaves in the credential.
+		{live + ":\n", liveHit, stripe, "live"},
+		// A key as the password, under a placeholder user or any other.
+		{"token:" + live, liveHit, stripe, "live"},
+		{"password:" + live, liveHit, stripe, "live"},
+		{"x:" + live, liveHit, stripe, "live"},
+		{":" + live, liveHit, stripe, "live"},
+		{"m\xc3\xbcller:" + live, liveHit, stripe, "live"},
+		// A test key is a test key, not a password.
+		{"svc:" + test, testHit, stripe, "test"},
+		// A password goes on counting beside a key in the user.
+		{test + ":" + pw, testHit + ", password in a Basic Authorization header (live)", stripe, "live"},
+		// Each part as itself, and a specific format over the generic one.
+		{"AK" + "IA" + g.of(tUpper+tDigit, 16) + ":" + live, "AWS access key ID (live), " + liveHit, stripe, "live"},
+		{"c" + "k_" + g.of(tHex, 40) + ":" + "c" + "s_" + g.of(tHex, 40), "WooCommerce API key (live)", "WooCommerce API key", "live"},
+		{"sk-" + "ant-api03-" + g.of(tB64U, 40) + ":", "Anthropic API key (live)", "Anthropic API key", "live"},
+		{"x:" + "ey" + "J" + g.of(tB64U, 20) + ".ey" + "J" + g.of(tB64U, 30) + "." + g.of(tB64U, 20), "JSON Web Token ()", "JSON Web Token", ""},
+		// A credential inside a credential.
+		{"x:Basic " + b64(live+":"), liveHit, stripe, "live"},
+	}
+}
+
+// TestFindSecretsBasicKeys checks that a key inside a Basic credential is
+// reported as itself, with its mode, wherever the credential is written.
+func TestFindSecretsBasicKeys(t *testing.T) {
+	for i, c := range basicKeyCases() {
+		for _, v := range basicForms(b64(c.cred)) {
+			if got := hitsString(FindSecrets(v)); got != c.want {
+				t.Errorf("case %d in %.20q: got [%s], want [%s]", i, v, got, c.want)
+			}
+		}
+	}
+}
+
+// TestFindSecretsBasicEveryFormat checks that every format is seen inside a
+// Basic credential, as the password and, where it holds no colon, as the user.
+func TestFindSecretsBasicEveryFormat(t *testing.T) {
+	for _, c := range append(positiveCases(), hintCases()...) {
+		if c.kind == urlPasswordKind {
+			continue // the whole URL is the credential's password
+		}
+		creds := []string{"x:" + c.in}
+		if !strings.Contains(c.in, ":") {
+			creds = append(creds, c.in+":")
+		}
+		for _, cred := range creds {
+			hits := FindSecrets("Authorization: Basic " + b64(cred))
+			if len(hits) != 1 || hits[0].Kind != c.kind || hits[0].Mode != c.mode {
+				t.Errorf("%s (%s) in a credential: got [%s]", c.kind, c.mode, hitsString(hits))
+			}
+		}
+	}
+}
+
+// basicPlainCreds gives decoded Basic credentials with no key in them, by what
+// must become of them: those that count, with their password or their
+// key-like user, and those only a copy clears.
+func basicPlainCreds() (counted, cleared []string) {
+	g := newTokGen(10)
+	counted = []string{
+		"svc:" + g.mixed(tAlnum, 14),
+		"token:" + g.mixed(tAlnum, 14),
+		":" + g.mixed(tAlnum, 14),
+		"svc:mysql://app:password@db.internal-host.gr/x",
+		// A password that holds a placeholder credential is still a password.
+		"x:Basic " + b64("deploybot"),
+		// A Telegram token holds the colon, so it reads as user and password.
+		"7" + g.of(tDigit, 9) + ":A" + "A" + g.of(tB64U, 33),
+		// A key in a format no pattern knows, sent as the user.
+		g.mixed(tAlnum, 24) + ":",
+		g.mixed(tAlnum, 24),
+		g.of(tHex, 32) + ":",
+		"live_" + g.mixed(tAlnum, 24) + ":",
+	}
+	for _, pw := range []string{"password", "PASSWORD", "pass", "pwd", "passwd", "secret", "xxx", "***", "changeme", "your_password", "token",
+		"xxxxxxxxxxxx", "$PASSWORD", "$3cretPassw0rd", "%PASS%", "{password}", "[secret]", "<password>"} {
+		cleared = append(cleared, "svc"+g.of(tLower, 6)+":"+pw)
+	}
+	u := "guest" + g.of(tAlnum, 6)
+	cleared = append(cleared,
+		"admin:admin", "Admin:ADMIN", u+":"+u, u+":"+strings.ToUpper(u), "Aladdin:open sesame",
+		// A name, not a key, with no password.
+		"deploybot:", "deploybot", "svc_deploy_2026:", "svc-deploy-2026", "jane.doe42@mail.fixture.gr:", "firstname.lastname2026:", "Jane Doe 12345 Athens:",
+		// Too short for a key, or too plain.
+		g.mixed(tAlnum, 15)+":", strings.Repeat("ab12", 8)+":")
+	return counted, cleared
+}
+
+// TestFindSecretsBasicPlain checks the rule for a credential with no key in
+// it: a real password and a key-like user with no password count, and the rest
+// don't, though a copy should clear them.
+func TestFindSecretsBasicPlain(t *testing.T) {
+	counted, cleared := basicPlainCreds()
+	for _, cred := range counted {
+		enc := b64(cred)
+		for _, v := range basicForms(enc) {
+			if got := hitsString(FindSecrets(v)); got != "password in a Basic Authorization header (live)" {
+				t.Errorf("%q: got [%s]", cred, got)
+			}
+			sp := FindSpans(v, SpanFinders())
+			if len(sp) != 1 || v[sp[0].Start:sp[0].End] != enc || sp[0].Detail != "password in a Basic Authorization header" || sp[0].Mode != "live" {
+				t.Errorf("%q: spans %+v", cred, sp)
+			}
+		}
+	}
+	for _, cred := range cleared {
+		enc := b64(cred)
+		for _, v := range basicForms(enc) {
+			if got := hitsString(FindSecrets(v)); got != "" {
+				t.Errorf("%q: got [%s]", cred, got)
+			}
+			sp := FindSpans(v, SpanFinders())
+			if len(sp) != 1 || v[sp[0].Start:sp[0].End] != enc || sp[0].Kind != SpanSecret || sp[0].Detail != "placeholder" || sp[0].Mode != "live" {
+				t.Errorf("%q: spans %+v", cred, sp)
+			}
+		}
+	}
+}
+
+// TestFindSecretsBasicNotText checks that base64 that doesn't decode to text
+// and holds no key isn't a credential: ordinary words after Basic, and bytes.
+func TestFindSecretsBasicNotText(t *testing.T) {
+	for _, v := range []string{
+		"Basic plan",
+		"Basic Membership",
+		"Authorization: Basic Membership",
+		"Authorization: Basic " + b64("svc:\xff\xfe1234567"),
+		"Authorization: Basic " + b64("svc:Passw0rd1234\n"),
+		"Authorization: Basic " + b64("m\xc3\xbcller:Passw0rd1234"),
+	} {
+		if got := hitsString(FindSecrets(v)); got != "" {
+			t.Errorf("%.40q: got [%s]", v, got)
+		}
+		if got := spanTexts(v, SpanSecret); got != nil {
+			t.Errorf("%.40q: spans %q", v, got)
+		}
+	}
+}
+
+// TestFindSecretsURLEscapes checks that an @ in a URL's user or password,
+// written plainly or as %40, doesn't hide the password from the scan, and
+// that a password's escapes are read before it is judged.
+func TestFindSecretsURLEscapes(t *testing.T) {
+	g := newTokGen(11)
+	pw := g.mixed(tAlnum, 14)
+	for _, v := range urlAtCases(pw) {
+		if got := hitsString(FindSecrets(v)); got != "password in a URL (live)" {
+			t.Errorf("%q: got [%s]", v, got)
+		}
+	}
+	for _, v := range []string{
+		"smtp://mailer:%DB_PASS%@mail.fixture-host.gr",
+		"smtp://mailer:%24PASSWORD@mail.fixture-host.gr",
+		"smtp://mailer:%7Bpassword%7D@mail.fixture-host.gr",
+		"smtp://mailer:pass%77ord@mail.fixture-host.gr",
+		"smtp://mailer%40corp.gr:mailer@corp.gr@mail.fixture-host.gr",
+		"smtp://mailer:%40" + pw + "@mail.example.com",
+		"https://jane@mail.fixture.gr:8443/account",
+		"ssh://git@git.fixture-host.gr:2222/shop.git",
+	} {
+		if got := hitsString(FindSecrets(v)); got != "" {
+			t.Errorf("%q: got [%s]", v, got)
+		}
+	}
+}
+
+// urlAtCases are URLs whose user or password holds an @ or an escape.
+func urlAtCases(pw string) []string {
+	return []string{
+		"mysql://app:%40" + pw + "@db.internal-host.gr/shop",
+		"mysql://app:%40" + pw + "@db/shop",
+		"mysql://app:ab%40" + pw + "@db.internal-host.gr/shop",
+		"mysql://app:%21" + pw + "@db/shop",
+		"mysql://app:ab@" + pw + "@db/shop",
+		"mysql://jane%40corp.gr:" + pw + "@db/shop",
+		"mysql://jane@corp.gr:" + pw + "@db/shop",
+		`{"dsn":"mysql:\/\/app:%40` + pw + `@db\/shop"}`,
+	}
+}
+
 // escapedCases are URLs and tokens with JSON-escaped slashes in log lines,
 // which no parser unescapes.
 func escapedCases() []secretCase {
@@ -408,6 +627,16 @@ func allTestValues() []string {
 		out = append(out, c.in)
 	}
 	out = append(out, prefilterEdgeCases()...)
+	for _, c := range basicKeyCases() {
+		out = append(out, basicForms(b64(c.cred))...)
+	}
+	counted, cleared := basicPlainCreds()
+	for _, cred := range append(counted, cleared...) {
+		out = append(out, basicForms(b64(cred))...)
+	}
+	out = append(out, urlAtCases(newTokGen(11).mixed(tAlnum, 14))...)
+	// A credential the scan doesn't count doesn't hide a key that overlaps it.
+	out = append(out, "Authorization: Basic "+b64("deploybot")+"-api"+"key-"+newTokGen(12).mixed(tAlnum, 32))
 	for _, values := range benchCorpora() {
 		out = append(out, values...)
 	}
@@ -433,6 +662,9 @@ func FuzzFindSecrets(f *testing.F) {
 		f.Add(v)
 	}
 	f.Add("Authorization: Basic " + b64("svc:"+g.mixed(tAlnum, 12)))
+	f.Add("Authorization: Basic " + b64("sk_"+"live_"+g.of(tAlnum, 24)+":"))
+	f.Add("Basic " + b64("x:Basic "+b64("x:Basic "+b64("sk_"+"test_"+g.of(tAlnum, 24)))))
+	f.Add("mysql://jane@corp.gr:%40" + g.mixed(tAlnum, 12) + "@db/x")
 	f.Add(`{"url":"https:\/\/hooks.example\/x"}`)
 	kinds := map[string]bool{}
 	for _, p := range secretPatterns {

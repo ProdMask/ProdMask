@@ -202,6 +202,28 @@ func TestSpanSecrets(t *testing.T) {
 	}
 }
 
+// TestSpanBasicKeys checks that a key inside a Basic credential makes the
+// whole encoded credential a span, named after the key, with the strongest
+// mode the credential holds.
+func TestSpanBasicKeys(t *testing.T) {
+	for i, c := range basicKeyCases() {
+		cred := b64(c.cred)
+		for _, v := range basicForms(cred) {
+			sp := FindSpans(v, SpanFinders())
+			if len(sp) != 1 || v[sp[0].Start:sp[0].End] != cred || sp[0].Kind != SpanSecret || sp[0].Detail != c.detail || sp[0].Mode != c.mode {
+				t.Errorf("case %d in %.20q: %+v, want the credential, %s (%s)", i, v, sp, c.detail, c.mode)
+			}
+		}
+	}
+	// A key that overlaps a credential the scan doesn't count is cleared with
+	// it, and doesn't read as a placeholder.
+	enc := b64("deploybot")
+	key := enc + "-api" + "key-" + newTokGen(44).mixed(tAlnum, 32)
+	if sp := FindSpans("Authorization: Basic "+key, SpanFinders()); len(sp) != 1 || sp[0].End-sp[0].Start != len(key) || sp[0].Detail == "placeholder" {
+		t.Errorf("a key over a placeholder credential: %+v", sp)
+	}
+}
+
 func TestSpanURLPasswords(t *testing.T) {
 	g := newTokGen(41)
 	pw := g.mixed(tAlnum, 14)
@@ -212,12 +234,39 @@ func TestSpanURLPasswords(t *testing.T) {
 		"same mysql://admin:admin@db.internal-host.gr/app":                    {"admin"},
 		"example host smtp://mailer:" + pw + "@mail.example.com":              {pw},
 		"no user info https://shop.fixture.gr/cart?u=jane@mail.fixture.gr ok": nil,
+		// An @ in the user or the password, plain or as %40: the last one
+		// before the path ends the password, at any host.
+		"mysql://app:%40" + pw + "@db.internal-host.gr/shop":     {"%40" + pw},
+		"mysql://app:%40" + pw + "@db/shop":                      {"%40" + pw},
+		"mysql://app:ab%40" + pw + "@db/shop":                    {"ab%40" + pw},
+		"mysql://app:%21" + pw + "@db/shop":                      {"%21" + pw},
+		"mysql://app:ab@" + pw + "@db/shop":                      {"ab@" + pw},
+		"mysql://jane%40corp.gr:" + pw + "@db/shop":              {pw},
+		"mysql://jane@corp.gr:" + pw + "@db/shop":                {pw},
+		`{"dsn":"mysql:\/\/app:%40` + pw + `@db\/shop"}`:         {"%40" + pw},
+		`{"dsn":"mysql:\/\/app:` + pw + uEsc("0040") + `db\/x"}`: {pw},
+		"https://jane@mail.fixture.gr:8443/account":              nil,
+		"ssh://git@git.fixture-host.gr:2222/shop.git":            nil,
+		"https://shop.fixture.gr:8443/cart@home":                 nil,
+	})
+	// The email finder leaves what the password takes, and the user's address.
+	checkSpans(t, SpanEmail, map[string][]string{
+		"mysql://app:%40" + pw + "@db.internal-host.gr/shop":         nil,
+		"mysql://jane%40corp.gr:" + pw + "@db.internal-host.gr/shop": {"jane%40corp.gr"},
+		"mysql://jane@corp.gr:" + pw + "@db.internal-host.gr/shop":   {"jane@corp.gr"},
+		"https://jane@mail.fixture.gr:8443/account":                  {"jane@mail.fixture.gr"},
 	})
 	// Placeholders, a password equal to its user and example hosts are
 	// found, for a copy to clear, but marked: the scan doesn't count them.
 	for in, detail := range map[string]string{
 		"mysql://root:password@db.internal-host.gr/app": "placeholder",
 		"mysql://app:" + pw + "@db.internal-host.gr/x":  "",
+		"mysql://app:%40" + pw + "@db/x":                "",
+		"mysql://app:%7Bpassword%7D@db/x":               "placeholder",
+		"mysql://app:%24PASSWORD@db/x":                  "placeholder",
+		"mysql://app:%PASS%@db/x":                       "placeholder",
+		"mysql://app:%40" + pw + "@db.example.com/x":    "placeholder",
+		"mysql://%40b:@B@db/x":                          "placeholder",
 	} {
 		sp := FindSpans(in, SpanFinders())
 		if len(sp) != 1 || sp[0].Kind != SpanURLPassword || sp[0].Detail != detail {
@@ -374,6 +423,8 @@ func FuzzFindSpans(f *testing.F) {
 	f.Add("+30 210 555 0123, 07700 900123, GB82 WEST 1234 5698 7654 32, 4242 4242 4242 4242, 2001:db8::1")
 	f.Add("%40%40@%40x.gr \\/\\/ 1.2.3.4.5 ::::")
 	f.Add(`{"n":"Line\n4242 4242 4242 4242\tjane@x.gr\\"}`)
+	f.Add("Authorization: Basic " + b64("sk_"+"live_"+g.of(tAlnum, 24)+":"))
+	f.Add("mysql://jane%40corp.gr:%40" + g.mixed(tAlnum, 12) + "@db/x?u=a%40b.gr")
 	f.Fuzz(func(t *testing.T, s string) {
 		v := NewTextView(s)
 		prev := 0

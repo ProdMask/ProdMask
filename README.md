@@ -7,7 +7,7 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
 - **Personal data and secrets:**
   - emails, phone numbers, addresses, names, dates of birth, national and tax IDs, device and hardware IDs, push notification tokens;
   - IBANs, card numbers, password hashes, and passwords stored as plain text;
-  - API keys and tokens: Stripe, AWS, GitHub, Slack, Discord, Telegram, Google OAuth, Paddle, Postman and about 60 more formats, keys labelled `apikey`, and passwords inside URLs and `Authorization` headers, including inside JSON and PHP-serialized values;
+  - API keys and tokens: Stripe, AWS, GitHub, Slack, Discord, Telegram, Google OAuth, Paddle, Postman and about 60 more formats, keys labelled `apikey`, and passwords inside URLs and `Authorization` headers ([what counts](#what-counts-as-a-credential)), including inside JSON and PHP-serialized values;
   - email addresses inside URLs, and messages people send each other, such as private messages and notifications.
 - **What staging would do to real people:**
   - payment gateways in live mode;
@@ -59,7 +59,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |
-| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. Severities can rise between versions: v0.4.0 rates passwords stored as plain text critical. v0.5.0 adds critical findings for live keys in the new formats and for passwords in URLs and Basic headers, high ones for tokens whose mode can't be told and for `vendor_auth_code`, and medium ones for webhook names and test-mode keys; `sk-` findings on URL slugs go away |
+| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. Severities can rise between versions: v0.4.0 rates passwords stored as plain text critical. v0.5.0 adds critical findings for live keys in the new formats and for passwords in URLs and Basic headers, high ones for tokens whose mode can't be told and for `vendor_auth_code`, and medium ones for webhook names and test-mode keys; `sk-` findings on URL slugs go away. v0.9.0 rates a key inside a Basic credential as that key, so one sent as the user is now found, and one sent as the password can fall from critical: a test-mode key to medium, a token whose mode can't be told to high. It adds critical findings for a Basic credential with no password whose user reads as a random key, and for passwords in URLs that start with a percent-escape such as `%40`, or whose user holds a plain `@` |
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
@@ -116,6 +116,15 @@ GRANT SELECT, SHOW VIEW ON shop.* TO 'prodmask_ro'@'%';
 ```
 
 The report warns when the user it runs as could change the database.
+
+## What counts as a credential
+
+- **A key in an `Authorization: Basic` credential:** the credential is decoded, and its user and password are read for the known key formats. A key sent as either, as Stripe's `curl -u sk_live_…:` sends it, is reported as that key with its live or test mode, whatever the other part holds. If a real password comes with it, that's reported as well.
+- **A password with no key in it** is critical, unless it reads as an example: a placeholder word such as `password`, one character repeated, a value that starts with `$`, `%`, `{`, `[` or `<`, or the user's own name, as in `admin:admin`.
+- **An empty or missing password:** the credential is critical only if its user reads as a random key: a part of 16 or more characters, with two kinds of character and 10 distinct ones, and no spaces, `@` or dots. `deploybot:` doesn't count.
+- **A password in a URL** follows the same rule for examples, read after its percent-escapes, and doesn't count at a host reserved for examples. The last `@` before the path ends the password, so a user or password can hold an `@`, written plainly or as `%40`.
+
+What doesn't count stays out of the report, though it may be a working credential. The span finders in `pkg/detect` still find it, with the detail `placeholder`, for tools that clear credentials rather than count them. A Basic credential that doesn't decode to ASCII text is read for keys only.
 
 ## Starter config
 

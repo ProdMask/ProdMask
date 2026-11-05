@@ -241,6 +241,17 @@ func TestAnalyzeNewSecrets(t *testing.T) {
 	if f := find(fs, model.CatSecret, ""); f == nil || f.Severity != model.SeverityCritical {
 		t.Errorf("Basic header: %+v", fs)
 	}
+	fs = Analyze(subject("request_log", "headers", "text"),
+		profileOf("Authorization: Basic "+b64("sk_"+"live_"+g.of(tAlnum, 24)+":")))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Severity != model.SeverityCritical ||
+		!strings.Contains(strings.Join(f.Reasons, " "), "Stripe secret key") {
+		t.Errorf("live key as a Basic header's user: %+v", fs)
+	}
+	fs = Analyze(subject("request_log", "headers", "text"),
+		profileOf("Authorization: Basic "+b64("sk_"+"test_"+g.of(tAlnum, 24)+":")))
+	if f := find(fs, model.CatSecret, ""); f == nil || f.Severity != model.SeverityMedium || !strings.Contains(f.Note, "test-mode") {
+		t.Errorf("test key as a Basic header's user: %+v", fs)
+	}
 	two := "keys " + "sk_" + "live_" + g.of(tAlnum, 24) + " and " + "AK" + "IA" + g.of(tUpper+tDigit, 16)
 	fs = Analyze(subject("settings", "notes", "text"), profileOf(two))
 	if f := find(fs, model.CatSecret, ""); f == nil || f.Matched != 1 || f.Sampled != 1 {

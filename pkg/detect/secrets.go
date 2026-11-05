@@ -3,6 +3,7 @@ package detect
 import (
 	"encoding/base64"
 	"math/bits"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -52,6 +53,9 @@ type secretPattern struct {
 	// another fallback's included.
 	fallback bool
 	note     secretNote
+	// basic marks a Basic credential, whose first submatch readBasic reads
+	// for what to report, in place of valid and the pattern's own kind.
+	basic bool
 }
 
 func constMode(mode string) func([]string) string { return func([]string) string { return mode } }
@@ -229,25 +233,50 @@ func bearerToken(_ string, m []string) bool {
 	return kindsOf(t) >= 2 && distinct(t) >= 8
 }
 
-// basicPassword reports whether a Basic credential decodes to user:password
-// with a password that isn't a placeholder, the user's name or RFC 7617's
-// example.
-func basicPassword(_ string, m []string) bool {
-	b := strings.TrimRight(m[1], "=")
-	d, err := base64.RawStdEncoding.DecodeString(b)
+// readBasic reads a Basic credential that pattern own found. A secret in its
+// decoded user or password is reported as itself, with its mode, whatever
+// the other part holds: an API key is often sent as the user, with an empty
+// password. The rest goes by basicCounts, where the credential reads as text.
+// One with no secret that doesn't count is still found, as a placeholder, for
+// a copy to clear.
+func readBasic(own int, m []string) []secretMatch {
+	d, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(m[1], "="))
 	if err != nil {
-		return false
+		return nil
 	}
-	for _, c := range d {
+	user, pw, _ := strings.Cut(string(d), ":")
+	inPassword := mergeMatches(counted(secretMatches(pw)))
+	out := append(mergeMatches(counted(secretMatches(user))), inPassword...)
+	credential := secretMatch{pattern: own, mode: secretPatterns[own].mode(m)}
+	switch {
+	case len(inPassword) > 0 || pw == "" && len(out) > 0 || !printableASCII(d):
+	case basicCounts(user, pw):
+		out = append(out, credential)
+	case len(out) == 0:
+		credential.placeholder = true
+		out = append(out, credential)
+	}
+	return out
+}
+
+// basicCounts reports whether a Basic credential with no secret in its
+// password counts: its password isn't a placeholder, the user's name or RFC
+// 7617's example, or with no password, its user reads as a random key rather
+// than a name, an address or words.
+func basicCounts(user, pw string) bool {
+	if pw == "" {
+		return !strings.ContainsAny(user, " \t@.") && randomPart(user)
+	}
+	return !placeholder(pw) && !strings.EqualFold(pw, user) && !(user == "Aladdin" && pw == "open sesame")
+}
+
+func printableASCII(b []byte) bool {
+	for _, c := range b {
 		if c < 0x20 || c > 0x7e {
 			return false
 		}
 	}
-	user, pw, ok := strings.Cut(string(d), ":")
-	if !ok || pw == "" || placeholder(pw) || strings.EqualFold(pw, user) {
-		return false
-	}
-	return !(user == "Aladdin" && pw == "open sesame")
+	return true
 }
 
 func exampleHost(host string) bool {
@@ -260,8 +289,20 @@ func exampleHost(host string) bool {
 	return strings.HasSuffix(h, ".example") || strings.HasSuffix(h, ".test") || strings.HasSuffix(h, ".invalid")
 }
 
+// urlPassword judges a password in a URL as it reads once decoded: %40 starts
+// a real password, and %7Bpassword%7D is a template.
 func urlPassword(_ string, m []string) bool {
-	return !placeholder(m[2]) && !strings.EqualFold(m[2], m[1]) && !exampleHost(m[3])
+	user, pw := unescapeURL(m[1]), unescapeURL(m[2])
+	return !placeholder(pw) && !strings.EqualFold(pw, user) && !exampleHost(m[3])
+}
+
+// unescapeURL reads the percent-escapes of a URL's user or password. Text with
+// a stray %, as the template %PASS% has, stays as it is.
+func unescapeURL(s string) string {
+	if d, err := url.PathUnescape(s); err == nil {
+		return d
+	}
+	return s
 }
 
 func skKey(_ string, m []string) bool { return randomPart(m[1]) }
@@ -433,7 +474,6 @@ func urlUserInfo(s string) bool {
 				if colon {
 					return true
 				}
-				break
 			} else if strings.IndexByte("/?#\"' \t\r\n", c) >= 0 {
 				break
 			}
@@ -624,11 +664,13 @@ var secretPatterns = []secretPattern{
 		re: rx(`-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY(?: BLOCK)?-----`)},
 	{kind: "JSON Web Token", hints: []string{"eyJ"}, re: rx(`\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`), mode: constMode("")},
 	{kind: "password in a Basic Authorization header", hints: []string{"uthorization"}, fold: true, group: 1, mode: constMode("live"),
-		re: rx(authLead + ci("basic") + `\s+([A-Za-z0-9+/]{8,}={0,2})`), valid: basicPassword},
+		re: rx(authLead + ci("basic") + `\s+([A-Za-z0-9+/]{8,}={0,2})`), basic: true},
 	{kind: "password in a Basic Authorization header", pre: basicValue, group: 1, mode: constMode("live"),
-		re: rx(`^` + ci("basic") + `[ \t]+([A-Za-z0-9+/]{8,}={0,2})\s*$`), valid: basicPassword},
+		re: rx(`^` + ci("basic") + `[ \t]+([A-Za-z0-9+/]{8,}={0,2})\s*$`), basic: true},
+	// The last @ before the path ends the password, so a user or password may
+	// hold one, written plainly or as %40, which a TextView reads as @.
 	{kind: "password in a URL", pre: urlUserInfo, mode: constMode("live"), valid: urlPassword,
-		re: rx(`\b[a-z][a-z0-9+.-]{1,15}://([^\s:@/?#"'<>\\]{0,64}):([^\s@/?#"'<>\\]{1,128})@([A-Za-z0-9.-]+)`)},
+		re: rx(`\b[a-z][a-z0-9+.-]{1,15}://([^\s:/?#"'<>\\]{0,64}):([^\s/?#"'<>\\]{1,128})@([A-Za-z0-9.-]+)`)},
 	// Fallbacks: a known format overlapping one of these is reported as itself. The
 	// self-labelled key comes first, so a key with a mode wins over a bearer header.
 	{kind: "self-labelled API key", hints: []string{"apikey", "api_key", "api-key"}, fold: true, mode: labelledMode,
@@ -861,6 +903,15 @@ func findSecrets(s string, prefilter bool) []SecretHit {
 		}
 		for _, mt := range p.matches(s) {
 			if p.fallback && overlaps(spans, mt.span) {
+				continue
+			}
+			if p.basic {
+				for _, in := range readBasic(i, mt.m) {
+					if !in.placeholder {
+						spans = append(spans, mt.span)
+						hits = addHit(hits, SecretHit{Kind: secretPatterns[in.pattern].kind, Mode: in.mode})
+					}
+				}
 				continue
 			}
 			spans = append(spans, mt.span)
