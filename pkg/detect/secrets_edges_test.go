@@ -248,6 +248,11 @@ func hintCases() []secretCase {
 		secretCase{"https://api.fixture-host.gr/v1?client" + "secret=" + g.mixed(tAlnum, 32), "API key in a URL", ""},
 		secretCase{"api" + "_key_" + g.mixed(tAlnum, 32), "self-labelled API key", ""},
 		secretCase{"api" + "-key-" + g.mixed(tAlnum, 32), "self-labelled API key", ""},
+		// GitHub's stateless installation token: a JWT that needn't start as
+		// JSON's does, and one cut short, which only starting so tells apart.
+		secretCase{g.statelessToken(), "GitHub token", "live"},
+		secretCase{"gh" + "s_" + g.of(tDigit, 7) + "_" + g.of(tB64U, 36) + "." + g.of(tB64U, 207) + "." + g.of(tB64U, 263), "GitHub token", "live"},
+		secretCase{g.statelessToken()[:96], "GitHub token", "live"},
 	)
 }
 

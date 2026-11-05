@@ -202,6 +202,37 @@ func TestSpanSecrets(t *testing.T) {
 	}
 }
 
+// TestSpanStatelessGitHub checks that GitHub's stateless installation token is
+// one span from its prefix to the end of its signature, past the JWT's dots and
+// base64url's hyphens, wherever it is kept, so a copy clears it whole. A token
+// in a URL's password place is the secret finder's, and no address's.
+func TestSpanStatelessGitHub(t *testing.T) {
+	g := newTokGen(43)
+	tok, other, old := g.statelessToken(), g.statelessToken(), "gh"+"s_"+g.of(tAlnum, 36)
+	one := func(v, want string) {
+		t.Helper()
+		sp := FindSpans(v, SpanFinders())
+		if len(sp) != 1 || v[sp[0].Start:sp[0].End] != want || sp[0].Kind != SpanSecret || sp[0].Detail != "GitHub token" || sp[0].Mode != "live" {
+			t.Errorf("%.30q: %+v, want one span of %d bytes", v, sp, len(want))
+		}
+	}
+	for _, v := range statelessForms(tok) {
+		one(v, tok)
+	}
+	// Cut short, the span is what is left, wherever the cut falls.
+	for _, n := range []int{40, 96, 300, 519} {
+		one(tok[:n], tok[:n])
+	}
+	// A dot or a hyphen after an older token isn't taken with it.
+	one("the token is "+old+".", old)
+	one(old+"-suffix", old)
+	checkSpans(t, SpanSecret, map[string][]string{
+		tok + "," + other:                                   {tok, other},
+		"old " + old + " new " + tok + ".":                  {old, tok},
+		`{"a":"` + tok + `","b":"` + other + `","c":"x y"}`: {tok, other},
+	})
+}
+
 // TestSpanBasicKeys checks that a key inside a Basic credential makes the
 // whole encoded credential a span, named after the key, with the strongest
 // mode the credential holds.

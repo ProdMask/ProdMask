@@ -47,6 +47,14 @@ func (g *tokGen) botToken(id string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(id)) + "." + g.of(tB64U, 6) + "." + g.of(tB64U, 38)
 }
 
+// statelessToken returns a GitHub App installation token as GitHub has minted
+// them since 2026, ghs_APPID_JWT: a JWT's two dots, base64url's hyphen and
+// underscore, and 520 characters in all.
+func (g *tokGen) statelessToken() string {
+	return "gh" + "s_" + g.of(tDigit, 7) + "_ey" + "J" + g.of(tB64U, 33) + ".ey" + "J" + g.of(tB64U, 204) + "." +
+		g.of(tB64U, 87) + "-" + g.of(tB64U, 87) + "_" + g.of(tB64U, 87)
+}
+
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 type secretCase struct {
@@ -244,6 +252,16 @@ func negativeCases() []string {
 		g.of(tHex, 32) + "-" + g.of(tHex, 8) + "-" + g.of(tHex, 9),
 		"LT" + "AI" + g.of(tAlnum, 30),
 		"sk_" + "live_x",
+		// Names that start like a GitHub installation token, since GHS is also
+		// the hazard labelling standard. None is a JWT, though each would pass
+		// the check GitHub suggests for a value known to be a token.
+		"gh" + "s_pictogram_flammable_liquid_category_2_large.png",
+		"gh" + "s_hazard_statements_for_flammable_liquids-2024.pdf",
+		"gh" + "s_12_" + g.of(tHex, 32) + ".pdf",
+		"gh" + "s_label_generator_v2.configuration_file.backup_copy_of_settings",
+		"gh" + "s_prod_database01.internal-domain.example-org",
+		// A signature shorter than any JWT's.
+		"gh" + "s_" + g.of(tDigit, 7) + "_" + g.of(tB64U, 36) + "." + g.of(tB64U, 60) + "." + g.of(tB64U, 42),
 	}
 }
 
@@ -315,6 +333,69 @@ func TestFindSecretsForms(t *testing.T) {
 	}
 }
 
+// statelessForms writes a token where a database keeps one: alone, in key=value
+// text, at the end of a sentence, in JSON and PHP-serialized text, in a clone
+// URL as GitHub's docs write it, in a query string and in headers.
+func statelessForms(tok string) []string {
+	return []string{
+		tok,
+		"GITHUB_TOKEN=" + tok,
+		"the token is " + tok + ".",
+		`{"token":"` + tok + `"}`,
+		`a:1:{s:5:"token";s:` + strconv.Itoa(len(tok)) + `:"` + tok + `";}`,
+		"https://x-access-token:" + tok + "@github.com/fixture-org/shop.git",
+		"https://api.fixture-host.gr/v1/items?access_token=" + tok + "&page=2",
+		"Authorization: Bearer " + tok,
+		"Authorization: token " + tok,
+		"Bearer " + tok,
+	}
+}
+
+// TestFindSecretsStatelessGitHub checks GitHub's stateless installation token,
+// ghs_APPID_JWT, in each of those forms, in the shapes GitHub's words leave
+// open, and cut short: it is a live token whatever cut it, the 4096 characters
+// the scan reads of a value or a column too short for it.
+func TestFindSecretsStatelessGitHub(t *testing.T) {
+	const want = "GitHub token (live)"
+	g := newTokGen(14)
+	tok := g.statelessToken()
+	if len(tok) != 520 || strings.Count(tok, ".") != 2 || !strings.Contains(tok, "-") {
+		t.Fatalf("the test's token has %d characters and %d dots", len(tok), strings.Count(tok, "."))
+	}
+	for _, v := range statelessForms(tok) {
+		if got := hitsString(FindSecrets(v)); got != want {
+			t.Errorf("%.30q: got [%s], want [%s]", v, got, want)
+		}
+	}
+	for i, v := range []string{
+		// GitHub writes APPID and doesn't say it is digits.
+		"gh" + "s_" + g.of(tAlnum, 20) + "_ey" + "J" + g.of(tB64U, 33) + ".ey" + "J" + g.of(tB64U, 204) + "." + g.of(tB64U, 263),
+		// A header or a payload that doesn't start as JSON's does.
+		"gh" + "s_" + g.of(tDigit, 7) + "_" + g.of(tB64U, 36) + "." + g.of(tB64U, 207) + "." + g.of(tB64U, 263),
+		// The shortest parts that make a JWT, HS256's signature among them.
+		"gh" + "s_" + g.of(tDigit, 7) + "_" + g.of(tB64U, 10) + "." + g.of(tB64U, 10) + "." + g.of(tB64U, 43),
+	} {
+		if got := hitsString(FindSecrets(v)); got != want {
+			t.Errorf("shape %d: got [%s], want [%s]", i, got, want)
+		}
+	}
+	// Cut at every length from 13 characters into the JWT.
+	shortest := strings.Index(tok, "_ey"+"J") + 1 + 13
+	for n := shortest; n < len(tok); n++ {
+		if got := hitsString(FindSecrets(tok[:n])); got != want {
+			t.Fatalf("cut to %d characters: got [%s], want [%s]", n, got, want)
+		}
+	}
+	if got := hitsString(FindSecrets(tok[:shortest-1])); got != "" {
+		t.Errorf("cut to %d characters: got [%s]", shortest-1, got)
+	}
+	// The scan's 4096 characters end inside this token.
+	log := strings.Repeat("step ok\n", 500) + tok
+	if got := hitsString(FindSecrets(log[:4096])); got != want {
+		t.Errorf("cut by the sample: got [%s], want [%s]", got, want)
+	}
+}
+
 // basicForms writes an encoded Basic credential in the forms logs and stored
 // requests keep it.
 func basicForms(cred string) []string {
@@ -372,6 +453,8 @@ func basicKeyCases() []basicKeyCase {
 		{"x:" + "ey" + "J" + g.of(tB64U, 20) + ".ey" + "J" + g.of(tB64U, 30) + "." + g.of(tB64U, 20), "JSON Web Token ()", "JSON Web Token", ""},
 		// A credential inside a credential.
 		{"x:Basic " + b64(live+":"), liveHit, stripe, "live"},
+		// How git sends a GitHub App's installation token.
+		{"x-access-token:" + g.statelessToken(), "GitHub token (live)", "GitHub token", "live"},
 	}
 }
 

@@ -548,6 +548,16 @@ var secretPatterns = []secretPattern{
 		after: deny("A-Za-z0-9")},
 	{kind: "GitHub token", hints: []string{"ghp_", "gho_", "ghu_", "ghs_", "ghr_"}, re: rx(`\bgh[pousr]_[0-9A-Za-z]{36,}`), mode: constMode("live")},
 	{kind: "GitHub token", hints: []string{"github_pat_"}, re: rx(`\bgithub_pat_[0-9A-Za-z_]{22,}`), mode: constMode("live")},
+	// GitHub's stateless installation token since 2026, ghs_APPID_JWT, which an
+	// Actions GITHUB_TOKEN is too: about 520 characters, with a JWT's two dots.
+	// The last part must be as long as HS256's signature, the shortest a signed
+	// JWT has, so a dotted file or module name that starts the same way stays out.
+	{kind: "GitHub token", hints: []string{"ghs_"}, mode: constMode("live"),
+		re: rx(`\bghs_[0-9A-Za-z]+_[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{43,}`)},
+	// The same token cut short, by the characters the scan reads of a value or
+	// by a column too short for it. Only the start of a JWT tells it from a name.
+	{kind: "GitHub token", hints: []string{"ghs_"}, mode: constMode("live"),
+		re: rx(`\bghs_[0-9A-Za-z]+_eyJ[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]+){0,2}`)},
 	{kind: "GitLab token", hints: []string{"glpat-", "gldt-", "glrt-", "glptt-", "glcbt-", "gloas-", "glft-", "glimt-", "glsoat-", "glagent-"},
 		re: rx(`\b(?:glpat|gldt|glrt|glptt|glcbt|gloas|glft|glimt|glsoat|glagent)-[A-Za-z0-9_-]{20,}`), mode: constMode("live")},
 	{kind: "GitLab token", hints: []string{"GR1348941"}, re: rx(`\bGR1348941[A-Za-z0-9_-]{20}`), mode: constMode("live"), after: edgeB64URL},

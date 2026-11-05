@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,100 @@ import (
 
 	"github.com/ProdMask/ProdMask/pkg/fixture"
 )
+
+// statelessToken returns a GitHub App installation token as GitHub has minted
+// them since 2026, ghs_APPID_JWT, assembled at run time.
+func statelessToken(seed uint64) string {
+	r := rand.New(rand.NewPCG(seed, seed*31+7))
+	part := func(n int) string {
+		const set = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = set[r.IntN(len(set))]
+		}
+		return string(b)
+	}
+	return "gh" + "s_1234567_ey" + "J" + part(33) + ".ey" + "J" + part(204) + "." + part(263)
+}
+
+// TestScanFailOnStatelessGitHub runs prodmask scan end to end against stateless
+// GitHub tokens in columns whose names say nothing, one whole and one cut by the
+// 4096 characters the scan reads of a value. It needs PRODMASK_TEST_DSN.
+func TestScanFailOnStatelessGitHub(t *testing.T) {
+	dsn := os.Getenv("PRODMASK_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PRODMASK_TEST_DSN is not set")
+	}
+	adminCfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminCfg.DBName = ""
+	connector, err := mysql.NewConnector(adminCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := sql.OpenDB(connector)
+	defer admin.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	const database = "prodmask_cli_fixture_stateless"
+	drop := "DROP DATABASE IF EXISTS `" + database + "`"
+	for _, s := range []string{
+		drop,
+		"CREATE DATABASE `" + database + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+		"CREATE TABLE `" + database + "`.deploy_steps (id int NOT NULL AUTO_INCREMENT PRIMARY KEY, step_output text, build_log text) ENGINE=InnoDB",
+	} {
+		if _, err := admin.ExecContext(ctx, s); err != nil {
+			t.Fatalf("build the table: %v", err)
+		}
+	}
+	defer admin.ExecContext(ctx, drop)
+	whole, cut := statelessToken(1), statelessToken(2)
+	if _, err := admin.ExecContext(ctx, "INSERT INTO `"+database+"`.deploy_steps (step_output, build_log) VALUES (?, ?)",
+		whole, strings.Repeat("step ok\n", 500)+cut); err != nil {
+		t.Fatalf("fill the table: %v", err)
+	}
+
+	cfg := adminCfg.Clone()
+	cfg.DBName = database
+	t.Setenv("PRODMASK_DSN", cfg.FormatDSN())
+	t.Setenv("PRODMASK_PASSWORD", "")
+	report := filepath.Join(t.TempDir(), "report.json")
+	code, stdout, stderr := run(New("1.2.3"), "scan", "--format", "json", "--out", report, "--fail-on", "critical")
+	if code != ExitFindings || !strings.Contains(stderr, "prodmask: found critical-severity items (--fail-on critical)\n") {
+		t.Fatalf("scan --fail-on critical: got status %d\nstderr: %q", code, stderr)
+	}
+	raw, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res struct {
+		Findings []struct {
+			Column, Category, Severity string
+			Reasons                    []string
+		}
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatalf("report.json: %v", err)
+	}
+	for _, column := range []string{"step_output", "build_log"} {
+		found := false
+		for _, f := range res.Findings {
+			found = found || f.Column == column && f.Category == "secret" && f.Severity == "critical" &&
+				strings.Contains(strings.Join(f.Reasons, " "), "GitHub token (1 live)")
+		}
+		if !found {
+			t.Errorf("%s has no critical GitHub token finding: %+v", column, res.Findings)
+		}
+	}
+	for name, out := range map[string]string{"report.json": string(raw), "stdout": stdout, "stderr": stderr} {
+		if strings.Contains(out, "gh"+"s_") || strings.Contains(out, whole[100:124]) || strings.Contains(out, cut[60:84]) {
+			t.Errorf("the %s contains a sampled value", name)
+		}
+	}
+}
 
 // TestScanCommand runs prodmask scan end to end against a fixture database,
 // like pkg/scan's integration test. It needs PRODMASK_TEST_DSN.

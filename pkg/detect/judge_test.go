@@ -36,6 +36,30 @@ func confident(fs []model.Finding) []model.Finding {
 	return out
 }
 
+// A stateless GitHub token makes the finding an older one does, whole or cut
+// short: --fail-on reads its severity, and the starter config its mask.
+func TestAnalyzeStatelessGitHub(t *testing.T) {
+	g := newTokGen(16)
+	analyze := func(v string) []model.Finding {
+		return Analyze(Subject{Table: "deploy_steps", Column: "step_output", Name: "step_output", DataType: "text", Sampled: true},
+			namedProfile("step_output", v))
+	}
+	older := analyze("gh" + "s_" + g.of(tAlnum, 36))
+	if len(older) != 1 || older[0].Category != model.CatSecret || older[0].Severity != model.SeverityCritical ||
+		!slices.Equal(older[0].Reasons, []string{"secret formats found: GitHub token (1 live)"}) {
+		t.Fatalf("an older token: %+v", older)
+	}
+	tok := g.statelessToken()
+	for _, v := range []string{tok, tok[:96], "GITHUB_TOKEN=" + tok, "https://x-access-token:" + tok + "@github.com/fixture-org/shop.git"} {
+		if got := analyze(v); !slices.EqualFunc(got, older, func(a, b model.Finding) bool {
+			return a.Category == b.Category && a.Severity == b.Severity && a.Confidence == b.Confidence && a.Mask == b.Mask &&
+				slices.Equal(a.Reasons, b.Reasons)
+		}) {
+			t.Errorf("%.30q: %+v, want the finding of an older token: %+v", v, got, older)
+		}
+	}
+}
+
 // A cache gets one finding that suggests deleting it, whatever it holds.
 func TestAnalyzeDeleteHint(t *testing.T) {
 	profile := `a:3:{` + phpStr("user_email") + phpStr("jane@mail.fixture.gr") +
