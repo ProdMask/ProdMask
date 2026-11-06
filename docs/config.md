@@ -14,13 +14,14 @@ This page describes every section, which ones the starter config holds, and how 
 | `version`, `database`, `platforms` | yes | `version` must be 1 |
 | `tables` | yes | yes, plus two keys of Pro's own: `class` and `without_primary_key` |
 | `relationships` | yes | to check text keys |
-| `neutralise` | yes | accepted; a copy warns that it doesn't apply them yet |
+| `neutralise` | yes | what to switch off: each entry is matched to what answers it, and a copy applies that |
 | `source`, `target` | no | where to copy from and to |
 | `keys` | no | how fakes are derived |
 | `staging_password_env` | no | the password staging logins get |
 | `classes` | no | which rows are customer data, content, settings or transient |
 | `rules`, `keep`, `public` | no | rules by pattern, values to keep, and public fields |
 | `views` | no | views that read other schemas |
+| `rewrite_urls` | no | where a copied site's URLs point |
 
 Pro reads the file strictly:
 
@@ -283,6 +284,34 @@ views: { keep_cross_schema: [ v_orders_with_stock ] }
 
 A copy leaves out views that read other schemas, since they would read the other schema's real data on the target. A view listed here is kept when every schema it reads exists on the target, as a copy that is complete and masked, and the target isn't the source's server. Otherwise it is left out, and the copy says why.
 
+## neutralise
+
+The starter config lists here what a copy could still do to real people: send mail, take live payments, fire webhooks, run scheduled jobs. Each entry has a `kind`, a `where`, a `why` and a `fix`.
+
+Pro matches each entry to what answers it, by its `kind`, its `where` and its `fix` as written, so leave `fix` as the scan wrote it. Pro's presets have those answers, and a copy applies them whether or not the file lists them: gateways to test mode, mail plugins' settings removed, webhooks disabled, pending scheduled actions cancelled. `prodmask plan` lists each one, with how to restore what it turned off on staging.
+
+- An entry that matches nothing Pro knows gets a blunt answer where one is safe: the setting removed, or a customer table emptied. Otherwise the plan is blocked, and says which line.
+- A `keep` of exactly what one of these writes blocks the plan too, naming the line.
+- An entry whose table the database no longer has has nothing to do, and the plan says so.
+
+## rewrite_urls
+
+```yaml
+rewrite_urls:
+  - {from: "https://shop.example", to: "https://staging.example"}
+```
+
+points a copied site at its staging address. Pro only; the scan doesn't write it. It isn't part of what `prodmask plan` decides, so changing it needs no new plan.
+
+- `from` and `to` are absolute `http` or `https` URLs with a host, a name or an IP literal, and an optional port and path. They can't hold a user, a password, a query or a fragment, and a non-ASCII host is written in its `xn--` form.
+- There can be up to 64 entries, and their `from`s must differ: either scheme matches, and hosts compare without regard to case.
+
+A `from` matches its URL with either scheme or none (`//shop.example`), written plainly, JSON-escaped or percent-encoded, with the same port, or none where it has none. It must end the host or the path, so `https://shop.example` doesn't match `https://shop.example.org`. The longest `from` goes first, and what's written is in the form it replaces.
+
+`rewrite_urls` leaves `posts.guid`, key names, numbers and generated values alone. A cell the rewrite doesn't fit is written without it, and the copy warns, naming the column. So it does for an entry that matched nothing, and for a WordPress or Magento copy with no `rewrite_urls`, which still points at production.
+
+In a WordPress network, every site but the main one is renamed `site<N>`, by its `blog_id`, with or without `rewrite_urls`, since a sub-site's address can be a person's name. An entry that names a site's own URL decides where that site goes, and the rest of its addresses go there too. A rename never skips: it reaches `posts.guid` too, and a cell where one can't be written gets the customer default, with a warning naming the column.
+
 ## Unique values
 
 Generated values stay unique where the column has a unique index, and where an application keeps values unique without one, such as WordPress's logins, emails and nicenames. Values compare ignoring case and accents, as the common collations do. Where a collation equates more, such as `general_ci` with `ß` and `s`, a generated value could still meet a kept one: under an index the copy then stops with an error naming the column; without an index, such as the application-level uniques, it would pass unnoticed. Both are rare, since generated unique values end in random characters.
@@ -296,7 +325,6 @@ A unique column can't hold the same value in every row, so `null` in a NOT NULL 
 
 ## Coming in later versions
 
-Pro refuses these sections for now, with "not in this version yet":
+Pro refuses this section for now, with "not in this version yet":
 
-- `rewrite_urls`, to point a copied site at its staging address;
 - `subset`, to copy part of the data, following its relationships.
