@@ -7,6 +7,8 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,90 @@ import (
 
 	"github.com/ProdMask/ProdMask/pkg/fixture"
 )
+
+// Whatever is typed in the wrong place may be a DSN with its password or a key:
+// no error repeats it, on any flag scan has. The flags come from scan's own help,
+// so a new one can't be missed.
+func TestScanNeverEchoesArguments(t *testing.T) {
+	t.Setenv("PRODMASK_DSN", "")
+	t.Setenv("PRODMASK_PASSWORD", "")
+	const password = "c0rrect-h0rse-b4ttery"
+	key := keyShaped()
+	secrets := []struct{ value, mark string }{
+		{"mysql://ro:" + password + "@db.example.test:3306/shop", password},
+		{"ro:" + password + "@tcp(db.example.test:3306)/shop", password},
+		{key, key[:12]},
+	}
+
+	_, _, help := run(New("1.2.3"), "scan", "-h")
+	var flags []string
+	for _, m := range regexp.MustCompile(`(?m)^  -([a-z-]+)`).FindAllStringSubmatch(help, -1) {
+		flags = append(flags, m[1])
+	}
+	if len(flags) < 13 || !slices.Contains(flags, "dsn") || !slices.Contains(flags, "no-color") {
+		t.Fatalf("read %d flags from scan -h: %q", len(flags), flags)
+	}
+
+	// A failure prints <secret> in place of the fake value.
+	check := func(wantCode int, mark string, args ...string) {
+		t.Helper()
+		typed := strings.ReplaceAll(strings.Join(args, " "), mark, "<secret>")
+		code, stdout, stderr := run(New("1.2.3"), args...)
+		if code != wantCode {
+			t.Errorf("prodmask %s: status %d, want %d", typed, code, wantCode)
+		}
+		if strings.Contains(stdout+stderr, mark) {
+			t.Errorf("prodmask %s: the secret is shown:\n%s", typed, strings.ReplaceAll(stdout+stderr, mark, "<secret>"))
+		}
+	}
+	for _, s := range secrets {
+		// On every flag, as its value or after it.
+		for _, f := range flags {
+			if f == "dsn" && s.mark == password {
+				continue // the right place for a DSN: it would connect
+			}
+			check(ExitUsage, s.mark, "scan", "--"+f, s.value)
+			check(ExitUsage, s.mark, "scan", "-"+f, s.value)
+			check(ExitUsage, s.mark, "scan", "--"+f+"="+s.value)
+		}
+		for _, args := range [][]string{
+			// As an argument of its own.
+			{s.value},
+			{"--", s.value},
+			{"--no-samples", "--verbose", s.value},
+			{"--preset", "auto", s.value},
+			// As a flag.
+			{"--" + s.value},
+			{"-" + s.value},
+			{"---" + s.value},
+			{"--" + s.value + "=1"},
+			{"--=" + s.value},
+			{"-=" + s.value},
+			{"--preset", "auto", "--" + s.value},
+		} {
+			check(ExitUsage, s.mark, append([]string{"scan"}, args...)...)
+		}
+		// In place of the command.
+		check(ExitUsage, s.mark, s.value)
+		check(ExitUsage, s.mark, "--"+s.value)
+		// Help, whatever follows it.
+		check(ExitOK, s.mark, "scan", "-h="+s.value)
+		check(ExitOK, s.mark, "scan", "--help="+s.value)
+	}
+
+	// A DSN's scheme can be the start of a secret, and a file's name can be a
+	// secret too: one that exists gets as far as being refused.
+	check(ExitUsage, key[:12], "scan", "--dsn", "k"+key+"://db.example.test/shop")
+	// In its right place, a password that a / cuts short would read as the
+	// database's name, and get printed on the way to connecting.
+	check(ExitUsage, password, "scan", "--dsn", "mysql://ro:12/"+password+"@db.example.test:3306/shop")
+	existing := filepath.Join(t.TempDir(), key)
+	if err := os.WriteFile(existing, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	check(ExitUsage, key[:12], "scan", "--out", existing)
+	check(ExitUsage, key[:12], "scan", "--config-out", existing)
+}
 
 // statelessToken returns a GitHub App installation token as GitHub has minted
 // them since 2026, ghs_APPID_JWT, assembled at run time.
@@ -148,7 +234,7 @@ func TestScanCommand(t *testing.T) {
 	if code != ExitFindings || stdout != "" {
 		t.Fatalf("scan --fail-on low: got status %d\nstdout: %q\nstderr: %q", code, stdout, stderr)
 	}
-	for _, want := range []string{"(read-only)...\n", "Report written to " + report + "\n", "prodmask: found high-severity items (--fail-on low)\n"} {
+	for _, want := range []string{"(read-only)...\n", "Report written.\n", "prodmask: found high-severity items (--fail-on low)\n"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr is missing %q:\n%s", want, stderr)
 		}
@@ -178,6 +264,35 @@ func TestScanCommand(t *testing.T) {
 	code, _, again := run(New("1.2.3"), "scan", "--format", "json", "--out", report)
 	if code != ExitUsage || !strings.Contains(again, "already exists; use --force to overwrite it") {
 		t.Errorf("scan over an existing report: got status %d\nstderr: %q", code, again)
+	}
+
+	// A file's path may be a secret typed in the wrong place. It's still used,
+	// but no output repeats it, whether the write works or fails. A failed write
+	// quotes the folder, as it would quote the host and password of a DSN.
+	key := keyShaped()
+	missing := filepath.Join(dir, key, "file")
+	for _, c := range []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"--no-color", "--out", filepath.Join(dir, key+".txt")}, ExitOK, "Report written.\n"},
+		{[]string{"--no-color", "--config-out", filepath.Join(dir, key+".yml")}, ExitOK, "Starter masking config written to the file given to --config-out."},
+		{[]string{"--no-color", "--out", missing}, ExitError, "prodmask: can't write the report\n"},
+		{[]string{"--no-color", "--config-out", missing}, ExitError, "prodmask: can't write the file given to --config-out\n"},
+	} {
+		code, stdout, stderr := run(New("1.2.3"), append([]string{"scan"}, c.args...)...)
+		if code != c.code || !strings.Contains(stdout+stderr, c.want) {
+			t.Errorf("scan %s: got status %d, want %d and %q", c.args[1], code, c.code, c.want)
+		}
+		if strings.Contains(stdout+stderr, key[:12]) {
+			t.Errorf("scan %s: the secret is shown", c.args[1])
+		}
+	}
+	for _, name := range []string{key + ".txt", key + ".yml"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("a file named as typed wasn't written: %v", err)
+		}
 	}
 
 	code, md, mdErr := run(New("1.2.3"), "scan", "--format", "markdown", "--preset", "laravel")

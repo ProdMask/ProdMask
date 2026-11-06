@@ -75,6 +75,26 @@ In CI, scan the database your staging copy came from, or the copy itself, and fa
 prodmask scan --dsn "$STAGING_DSN" --fail-on high --format markdown --out prodmask-report.md
 ```
 
+## Check a staging database for real values
+
+`prodmask leak-check` checks your staging database for a sample of real customer values from production. Your key stays with you, and the report shows counts, never values.
+
+```bash
+prodmask leak-check key --out leak.key
+```
+
+```bash
+PRODMASK_PASSWORD='…' prodmask leak-check hash --dsn 'mysql://prodmask_ro@prod.internal:3306/shop' --key-file leak.key --out shop.leakhashes.json
+```
+
+```bash
+PRODMASK_PASSWORD='…' prodmask leak-check compare --dsn 'mysql://prodmask_ro@staging.internal:3306/shop' --key-file leak.key --hashes shop.leakhashes.json --fail-on high
+```
+
+The first step samples the columns `scan` flags on production and writes keyed hashes. Treat that file as personal data. The second reads those columns whole on staging, so it belongs on staging, and reports per column how many sampled values turned up.
+
+A zero isn't proof that none are there. Only a sample is looked for, and only kinds unlikely to match by chance: email addresses, phone numbers, IBANs, national and tax IDs, payment tokens, password hashes and secrets, not names or street addresses. See [docs/leak-check.md](docs/leak-check.md) for the odds, the costs, the exit statuses and the data protection notes.
+
 ## What it does to your database
 
 `prodmask scan` is built to be safe to run against production:
@@ -116,6 +136,8 @@ GRANT SELECT, SHOW VIEW ON shop.* TO 'prodmask_ro'@'%';
 ```
 
 The report warns when the user it runs as could change the database.
+
+`prodmask leak-check` uses the same read-only session. Its `hash` step reads about ten times what `scan` reads from each flagged table. Its `compare` step reads whole columns, so it's for staging, never production. [docs/leak-check.md](docs/leak-check.md) has the details.
 
 ## What counts as a credential
 

@@ -18,6 +18,12 @@ func TestParseDSN(t *testing.T) {
 		{"mysql://root@localhost/wp?socket=/run/mysqld/mysqld.sock", "", "root", "", "unix", "/run/mysqld/mysqld.sock", "wp"},
 		{"shop:secret@tcp(10.0.0.5:3306)/shop", "ignored", "shop", "secret", "tcp", "10.0.0.5:3306", "shop"},
 		{"ro@tcp(db:3306)/shop?tls=skip-verify", "pw", "ro", "pw", "tcp", "db:3306", "shop"},
+		// An @ in a password is fine as typed; a / needs encoding, and an @ past
+		// the host does too.
+		{"mysql://ro:p@ss@db.internal/shop", "", "ro", "p@ss", "tcp", "db.internal:3306", "shop"},
+		{"mysql://ro:12%2Ftail@db.internal/shop", "", "ro", "12/tail", "tcp", "db.internal:3306", "shop"},
+		{"mysql://ro@db.internal/sh%40p", "", "ro", "", "tcp", "db.internal:3306", "sh@p"},
+		{"mysql://root@localhost/wp?socket=/run/my%40sql.sock", "", "root", "", "unix", "/run/my@sql.sock", "wp"},
 	}
 	for _, c := range cases {
 		cfg, err := ParseDSN(c.in, c.password)
@@ -54,6 +60,10 @@ func TestParseDSNErrors(t *testing.T) {
 			t.Errorf("%q: error repeats the password: %v", in, err)
 		}
 	}
+	// What precedes :// may be a secret, not a scheme.
+	if _, err := ParseDSN("hunter2://db:3306/shop", ""); err == nil || strings.Contains(err.Error(), "hunter2") {
+		t.Errorf("error repeats the scheme: %v", err)
+	}
 	// The driver's own errors quote parts of these, password included.
 	for in, password := range map[string]string{
 		"root:hunter2/shop":                          "hunter2",
@@ -67,6 +77,35 @@ func TestParseDSNErrors(t *testing.T) {
 			continue
 		}
 		if strings.Contains(err.Error(), password) || strings.Contains(err.Error(), "ss@") {
+			t.Errorf("%q: error repeats the password: %v", in, err)
+		}
+	}
+}
+
+// A /, ? or # in a user or password ends the host early. What follows would read
+// as the database and its parameters, and the database's name gets printed.
+func TestParseDSNPasswordCutShort(t *testing.T) {
+	for _, in := range []string{
+		"mysql://ro:12/hunter2@db:3306/shop",
+		"mysql://ro:/hunter2@db:3306/shop",
+		"mariadb://ro:12/hunter2@db:3306/shop",
+		"mysql://ro:12/hunter2@db",
+		"mysql://ro/hunter2@db:3306/shop",
+		"mysql://ro:p@ss/hunter2@db:3306/shop",
+		"mysql://ro:12/hunter2?more@db:3306/shop",
+		"mysql://ro:12/hunter2#more@db:3306/shop",
+		"mysql://ro:p@ss/hunter2?more@db:3306/shop",
+		"mysql://ro:p@ss/hunter2#more@db:3306/shop",
+		"mysql://ro:12?hunter2@db:3306/shop",
+		"mysql://ro:12#hunter2@db:3306/shop",
+		"mysql:/ro:hunter2@db/shop://x",
+	} {
+		_, err := ParseDSN(in, "")
+		if !errors.Is(err, ErrBadDSN) {
+			t.Errorf("%q: got %v, want ErrBadDSN", in, err)
+			continue
+		}
+		if strings.Contains(err.Error(), "hunter2") {
 			t.Errorf("%q: error repeats the password: %v", in, err)
 		}
 	}

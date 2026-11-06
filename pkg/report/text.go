@@ -12,9 +12,9 @@ import (
 
 // TextOptions control the terminal report.
 type TextOptions struct {
-	Color      bool   // use ANSI colours
-	Verbose    bool   // also list low-confidence matches, relationships and full evidence
-	ConfigPath string // where a starter config was written, if anywhere
+	Color         bool // use ANSI colours
+	Verbose       bool // also list low-confidence matches, relationships and full evidence
+	ConfigWritten bool // a starter config was written. Its path isn't printed: it may be a secret typed in the wrong place
 }
 
 type style struct{ on bool }
@@ -223,8 +223,8 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 	}
 
 	pf("\n")
-	if opts.ConfigPath != "" {
-		pf("Starter masking config written to %s. Review it before use.\n", opts.ConfigPath)
+	if opts.ConfigWritten {
+		pf("Starter masking config written to the file given to --config-out. Review it before use.\n")
 	} else {
 		pf("%s\n", st.dim("Add --config-out prodmask.yml to write a starter masking config from these findings."))
 	}

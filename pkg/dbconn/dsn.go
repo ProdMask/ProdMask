@@ -22,9 +22,9 @@ var ErrBadDSN = errors.New("the DSN doesn't parse: expected user:password@tcp(ho
 //	mysql://user:pass@host:3306/dbname?tls=true
 //	user:pass@tcp(host:3306)/dbname?tls=true
 //
-// The URL form also accepts ?socket=/path/to/mysqld.sock. When the DSN has no
-// password, password (usually from PRODMASK_PASSWORD) is used instead. Its
-// errors never quote the DSN.
+// The URL form also accepts ?socket=/path/to/mysqld.sock, and refuses a raw @
+// after the host. When the DSN has no password, password (usually from
+// PRODMASK_PASSWORD) is used instead. Its errors never quote the DSN.
 func ParseDSN(dsn, password string) (*mysql.Config, error) {
 	dsn = strings.TrimSpace(dsn)
 	if dsn == "" {
@@ -58,7 +58,12 @@ func parseURL(raw string) (*mysql.Config, error) {
 		return nil, fmt.Errorf("%w: check the host and port, and percent-encode special characters in the password", ErrBadDSN)
 	}
 	if u.Scheme != "mysql" && u.Scheme != "mariadb" {
-		return nil, fmt.Errorf("unsupported DSN scheme %q (use mysql://)", u.Scheme)
+		return nil, errors.New("unsupported DSN scheme (use mysql://)")
+	}
+	// An @ past the host means a /, ? or # cut the user or password short. The
+	// rest of them would read as the database's name, which gets printed.
+	if strings.Contains(u.EscapedPath()+u.RawQuery+u.EscapedFragment(), "@") {
+		return nil, fmt.Errorf("%w: percent-encode special characters in the password, and an @ after the host as %%40", ErrBadDSN)
 	}
 	q := u.Query()
 	socket := q.Get("socket")

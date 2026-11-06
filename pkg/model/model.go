@@ -443,6 +443,9 @@ type TableSummary struct {
 	PossibleAction       string `json:"possible_action,omitempty"`
 	PossibleActionReason string `json:"possible_action_reason,omitempty"`
 	Error                string `json:"error,omitempty"`
+	// ReadFailed says a statement reading this key/value table's keys failed,
+	// so some keys may have gone unjudged. The warnings say which statement.
+	ReadFailed bool `json:"read_failed,omitempty"`
 }
 
 // ScanOptions records the settings a scan ran with.

@@ -148,6 +148,7 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 			}
 			if kv != nil {
 				ts.RowsSampled += kv.rows
+				ts.ReadFailed = len(kv.failures()) > 0
 				if kv.demoted {
 					// Keyed by data, such as people's names: judged as a
 					// plain table, whose key column may hold the names.

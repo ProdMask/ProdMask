@@ -3,21 +3,27 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/ProdMask/ProdMask/pkg/preset"
 )
 
-// The free build's help text, exactly as prodmask 0.1.0 printed it.
+// The free build's help text, exactly.
 const wantUsage = `prodmask finds what a plain copy of a MySQL or MariaDB database would carry
 into staging: personal data, secrets, and settings that would email or charge
 real customers. It only reads, and it never prints the data it samples.
 
 Usage:
-  prodmask scan [flags]    scan a database (read-only)
-  prodmask version         print the version
+  prodmask leak-check key|hash|compare [flags]    count real production values on a staging database
+  prodmask scan [flags]                           scan a database (read-only)
+  prodmask version                                print the version
 
-Run "prodmask scan -h" for the scan flags.
+Run "prodmask scan -h" for the scan flags, or "prodmask leak-check -h" for the
+staging leak check.
 `
 
 func run(a *App, args ...string) (code int, stdout, stderr string) {
@@ -39,8 +45,8 @@ func TestFreeBuild(t *testing.T) {
 		{[]string{"version"}, ExitOK, "prodmask 1.2.3\n", ""},
 		{[]string{"--version"}, ExitOK, "prodmask 1.2.3\n", ""},
 		{[]string{"version", "extra"}, ExitOK, "prodmask 1.2.3\n", ""},
-		{[]string{"bogus"}, ExitUsage, "", "prodmask: unknown command \"bogus\"\n\n" + wantUsage},
-		{[]string{"--bogus"}, ExitUsage, "", "prodmask: unknown command \"--bogus\"\n\n" + wantUsage},
+		{[]string{"bogus"}, ExitUsage, "", "prodmask: argument 1 is no command it knows; it isn't shown, in case it is a secret\n\n" + wantUsage},
+		{[]string{"--bogus"}, ExitUsage, "", "prodmask: argument 1 is no command it knows; it isn't shown, in case it is a secret\n\n" + wantUsage},
 	}
 	for _, c := range cases {
 		code, stdout, stderr := run(New("1.2.3"), c.args...)
@@ -57,14 +63,23 @@ func TestScanUsageErrors(t *testing.T) {
 		args   []string
 		stderr string
 	}{
-		{[]string{"--format", "xml"}, "prodmask scan: unknown --format \"xml\" (want text, markdown or json)\n"},
-		{[]string{"--preset", "foo"}, "prodmask scan: unknown --preset \"foo\"\n"},
-		{[]string{"--fail-on", "extreme"}, "prodmask scan: --fail-on: unknown severity \"extreme\" (want none, low, medium, high or critical)\n"},
+		{[]string{"--format", "xml"}, "prodmask scan: the value of --format isn't valid: it's text, markdown or json\n"},
+		{[]string{"--preset", "foo"}, "prodmask scan: the value of --preset isn't valid: it's auto, none, " + strings.Join(preset.Names, ", ") + "\n"},
+		{[]string{"--fail-on", "extreme"}, "prodmask scan: the value of --fail-on isn't valid: it's none, low, medium, high or critical\n"},
 		{[]string{"--sample-rows", "0"}, "prodmask scan: --sample-rows and --meta-sample-rows must be at least 1 (or use --no-samples)\n"},
 		{[]string{"--timeout", "100ms"}, "prodmask scan: --timeout must be at least 1s\n"},
-		{[]string{"extra"}, "prodmask scan: unexpected argument \"extra\"\n"},
+		{[]string{"extra"}, "prodmask scan: argument 1 is unexpected: it takes flags only; it isn't shown, in case it is a secret\n"},
+		{[]string{"--force", "extra"}, "prodmask scan: argument 2 is unexpected: it takes flags only; it isn't shown, in case it is a secret\n"},
+		{[]string{"--timeout", "soon"}, "prodmask scan: the value of --timeout isn't valid; it isn't shown, in case it is a secret\nRun \"prodmask scan -h\" for its flags.\n"},
+		{[]string{"--sample-rows", "many"}, "prodmask scan: the value of --sample-rows isn't valid; it isn't shown, in case it is a secret\nRun \"prodmask scan -h\" for its flags.\n"},
+		{[]string{"--force=maybe"}, "prodmask scan: the value of --force isn't valid; it isn't shown, in case it is a secret\nRun \"prodmask scan -h\" for its flags.\n"},
+		{[]string{"--timeout"}, "prodmask scan: --timeout needs a value\nRun \"prodmask scan -h\" for its flags.\n"},
+		{[]string{"--bogus"}, "prodmask scan: argument 1 is no flag it knows; it isn't shown, in case it is a secret\nRun \"prodmask scan -h\" for its flags.\n"},
+		{[]string{"--preset", "auto", "--bogus"}, "prodmask scan: argument 3 is no flag it knows; it isn't shown, in case it is a secret\nRun \"prodmask scan -h\" for its flags.\n"},
 		{nil, "prodmask scan: no DSN given: pass --dsn or set PRODMASK_DSN\n"},
-		{[]string{"--dsn", "ftp://x"}, "prodmask scan: unsupported DSN scheme \"ftp\" (use mysql://)\n"},
+		{[]string{"--dsn", "ftp://x"}, "prodmask scan: unsupported DSN scheme (use mysql://)\n"},
+		{[]string{"--dsn", "mysql://ro:12/tail@db/shop"}, "prodmask scan: the DSN doesn't parse: expected user:password@tcp(host:port)/database or mysql://user:password@host:port/database: " +
+			"percent-encode special characters in the password, and an @ after the host as %40\n"},
 	}
 	for _, c := range cases {
 		code, stdout, stderr := run(New("1.2.3"), append([]string{"scan"}, c.args...)...)
@@ -78,9 +93,17 @@ func TestScanUsageErrors(t *testing.T) {
 		!strings.Contains(stderr, "\n  -fail-on string\n") {
 		t.Errorf("prodmask scan -h: got status %d\nstdout: %q\nstderr: %q", code, stdout, stderr)
 	}
-	code, _, stderr = run(New("1.2.3"), "scan", "--bogus")
-	if code != ExitUsage || !strings.HasPrefix(stderr, "flag provided but not defined: -bogus\nUsage: prodmask scan [flags]\n") {
-		t.Errorf("prodmask scan --bogus: got status %d\nstderr: %q", code, stderr)
+
+	// A file that's there is named by its flag.
+	existing := filepath.Join(t.TempDir(), "exists")
+	if err := os.WriteFile(existing, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"--out", "--config-out"} {
+		want := "prodmask scan: the file given to " + f + " already exists; use --force to overwrite it\n"
+		if code, _, stderr := run(New("1.2.3"), "scan", f, existing); code != ExitUsage || stderr != want {
+			t.Errorf("prodmask scan %s over an existing file: got status %d\nstderr: %q", f, code, stderr)
+		}
 	}
 }
 
@@ -99,9 +122,10 @@ func TestRegister(t *testing.T) {
 	})
 
 	wantPro := "About.\n\nUsage:\n" +
-		"  prodmask copy [flags]    make a copy\n" +
-		"  prodmask scan [flags]    scan a database (read-only)\n" +
-		"  prodmask version         print the version\n" +
+		"  prodmask copy [flags]                           make a copy\n" +
+		"  prodmask leak-check key|hash|compare [flags]    count real production values on a staging database\n" +
+		"  prodmask scan [flags]                           scan a database (read-only)\n" +
+		"  prodmask version                                print the version\n" +
 		"\nFooter.\n"
 	if got := a.Usage(); got != wantPro {
 		t.Errorf("usage:\n%s\nwant:\n%s", got, wantPro)
@@ -121,7 +145,7 @@ func TestRegister(t *testing.T) {
 	for _, c := range a.Commands() {
 		names = append(names, c.Name)
 	}
-	if strings.Join(names, " ") != "copy scan version" {
+	if strings.Join(names, " ") != "copy leak-check scan version" {
 		t.Errorf("Commands: got %q", names)
 	}
 

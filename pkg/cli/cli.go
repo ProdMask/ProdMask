@@ -58,7 +58,8 @@ into staging: personal data, secrets, and settings that would email or charge
 real customers. It only reads, and it never prints the data it samples.
 `
 
-const freeFooter = `Run "prodmask scan -h" for the scan flags.
+const freeFooter = `Run "prodmask scan -h" for the scan flags, or "prodmask leak-check -h" for the
+staging leak check.
 `
 
 // New returns the free build of prodmask.
@@ -71,7 +72,7 @@ func New(version string) *App {
 // FreeCommands returns new copies of the free build's commands, for builds
 // that add their own.
 func FreeCommands() []*Command {
-	return []*Command{scanCommand(), versionCommand()}
+	return []*Command{scanCommand(), leakCheckCommand(), versionCommand()}
 }
 
 // reserved words select the usage text and can't name a command.
@@ -156,7 +157,7 @@ func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if c := a.Lookup(args[0]); c != nil {
 		return c.Run(ctx, &Env{App: a, Stdout: stdout, Stderr: stderr}, args[1:])
 	}
-	fmt.Fprintf(stderr, "prodmask: unknown command %q\n\n%s", args[0], a.Usage())
+	fmt.Fprintf(stderr, "prodmask: argument 1 is no command it knows; it isn't shown, in case it is a secret\n\n%s", a.Usage())
 	return ExitUsage
 }
 

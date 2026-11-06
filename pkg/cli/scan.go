@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,7 +32,6 @@ func scanCommand() *Command {
 func runScan(ctx context.Context, env *Env, args []string) int {
 	stdout, stderr := env.Stdout, env.Stderr
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
-	fs.SetOutput(stderr)
 	dsn := fs.String("dsn", "", "connection string, mysql://user@host:3306/db or user@tcp(host:3306)/db\n(default $PRODMASK_DSN; the password may come from $PRODMASK_PASSWORD)")
 	sampleRows := fs.Int("sample-rows", scan.DefaultSampleRows, "rows to sample per table")
 	metaRows := fs.Int("meta-sample-rows", scan.DefaultMetaSampleRows, "rows to sample from a key/value table such as wp_postmeta\nthat is too big to read whole")
@@ -47,8 +45,7 @@ func runScan(ctx context.Context, env *Env, args []string) int {
 	failOn := fs.String("fail-on", "none", "exit with status 3 if anything at or above this severity is found:\nnone, low, medium, high or critical")
 	verbose := fs.Bool("verbose", false, "also show low-confidence matches, inferred relationships and full evidence")
 	noColor := fs.Bool("no-color", false, "plain text report without colours (also: $NO_COLOR)")
-	fs.Usage = func() {
-		fmt.Fprint(stderr, `Usage: prodmask scan [flags]
+	usage := `Usage: prodmask scan [flags]
 
 Scans one database without changing anything: a read-only session, a few
 hundred rows per table, and a time limit on every statement. Reports list
@@ -56,33 +53,23 @@ names, counts and categories, never the sampled values.
 
 Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 --fail-on.
-
-Flags:
-`)
-		fs.PrintDefaults()
-	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return ExitOK
-		}
-		return ExitUsage
+`
+	if ok, code := parseQuiet(env, "scan", fs, usage, args); !ok {
+		return code
 	}
 	usageErr := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "prodmask scan: "+format+"\n", a...)
 		return ExitUsage
 	}
-	if fs.NArg() > 0 {
-		return usageErr("unexpected argument %q", fs.Arg(0))
-	}
 	if !slices.Contains([]string{"text", "markdown", "md", "json"}, *format) {
-		return usageErr("unknown --format %q (want text, markdown or json)", *format)
+		return usageErr("the value of --format isn't valid: it's text, markdown or json")
 	}
 	if *presetName != "auto" && *presetName != "none" && !slices.Contains(preset.Names, *presetName) {
-		return usageErr("unknown --preset %q", *presetName)
+		return usageErr("the value of --preset isn't valid: it's auto, none, %s", strings.Join(preset.Names, ", "))
 	}
 	threshold, err := model.ParseSeverity(*failOn)
 	if err != nil {
-		return usageErr("--fail-on: %v", err)
+		return usageErr("the value of --fail-on isn't valid: it's none, low, medium, high or critical")
 	}
 	if !*noSamples && (*sampleRows < 1 || *metaRows < 1) {
 		return usageErr("--sample-rows and --meta-sample-rows must be at least 1 (or use --no-samples)")
@@ -90,12 +77,12 @@ Flags:
 	if *timeout < time.Second {
 		return usageErr("--timeout must be at least 1s")
 	}
-	for _, p := range []string{*out, *configOut} {
-		if p == "" || *force {
+	for _, f := range []struct{ name, path string }{{"--out", *out}, {"--config-out", *configOut}} {
+		if f.path == "" || *force {
 			continue
 		}
-		if _, err := os.Stat(p); err == nil {
-			return usageErr("%s already exists; use --force to overwrite it", p)
+		if _, err := os.Stat(f.path); err == nil {
+			return usageErr("the file given to %s already exists; use --force to overwrite it", f.name)
 		}
 	}
 
@@ -144,7 +131,7 @@ Flags:
 
 	if *configOut != "" {
 		if err := writeFile(*configOut, func(w io.Writer) error { return config.Write(w, res) }); err != nil {
-			fmt.Fprintf(stderr, "prodmask: write config: %v\n", err)
+			fmt.Fprintln(stderr, "prodmask: can't write the file given to --config-out")
 			return ExitError
 		}
 	}
@@ -156,7 +143,7 @@ Flags:
 		case "markdown", "md":
 			return report.Markdown(w, res)
 		}
-		return report.Text(w, res, report.TextOptions{Color: color, Verbose: *verbose, ConfigPath: *configOut})
+		return report.Text(w, res, report.TextOptions{Color: color, Verbose: *verbose, ConfigWritten: *configOut != ""})
 	}
 	if *out != "" {
 		err = writeFile(*out, func(w io.Writer) error { return render(w, false) })
@@ -166,11 +153,11 @@ Flags:
 		err = render(stdout, color)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "prodmask: write report: %v\n", err)
+		fmt.Fprintln(stderr, "prodmask: can't write the report")
 		return ExitError
 	}
 	if *out != "" {
-		fmt.Fprintf(stderr, "Report written to %s\n", *out)
+		fmt.Fprintln(stderr, "Report written.")
 	}
 
 	if threshold != model.SeverityNone && res.Summary.Highest >= threshold {
@@ -181,7 +168,8 @@ Flags:
 }
 
 // writeFile writes through a temporary file in the same folder, so a failed
-// scan never leaves half a file behind.
+// scan never leaves half a file behind. Its errors quote the path, which may be
+// a secret typed in the wrong place, so they aren't for printing.
 func writeFile(path string, fill func(io.Writer) error) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".prodmask-*.tmp")
 	if err != nil {
