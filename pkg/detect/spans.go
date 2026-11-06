@@ -294,16 +294,12 @@ func (v *TextView) spans(spans []Span) []Span {
 
 const urlPasswordKind = "password in a URL"
 
-// urlPasswordPattern is the scan's pattern for user:password@ in URLs,
-// which reports its password part as a span of its own kind.
-var urlPasswordPattern = func() *secretPattern {
-	for i := range secretPatterns {
-		if secretPatterns[i].kind == urlPasswordKind {
-			return &secretPatterns[i]
-		}
-	}
-	panic("no pattern for passwords in URLs")
-}()
+// urlPasswordIndex is the index in secretPatterns of the scan's pattern for
+// user:password@ in URLs, urlPasswordPattern, which reports its password part as
+// a span of its own kind.
+var urlPasswordIndex = slices.IndexFunc(secretPatterns, func(p secretPattern) bool { return p.kind == urlPasswordKind })
+
+var urlPasswordPattern = &secretPatterns[urlPasswordIndex]
 
 // secretMatch is one secret found in the text of a value.
 type secretMatch struct {
@@ -320,7 +316,7 @@ type secretMatch struct {
 // match is dropped when it overlaps a token already found, as in the scan.
 func secretMatches(text string) []secretMatch {
 	found := hints.scan(text)
-	if found.empty() && len(text) < 50 && !strings.Contains(text, "://") && !bearerValue(text) && !basicValue(text) {
+	if found.empty() && len(text) < 50 && !bearerValue(text) && !basicValue(text) {
 		return nil
 	}
 	var (
@@ -415,17 +411,45 @@ func mergeSecrets(ms []secretMatch) []Span {
 // in Authorization headers: the whole encoded credential is the span, named
 // after the secret inside it. A credential the scan doesn't count, which reads
 // as an example or has no password, is found all the same, as a placeholder,
-// since a copy should clear it.
+// since a copy should clear it. So is a URL's whole password the span of a secret
+// in part of it, which would otherwise hide what the rest of the password holds.
 func findSecretSpans(v *TextView) []Span {
 	if len(v.Text) < 12 {
 		return nil
 	}
-	return mergeSecrets(secretMatches(v.Text))
+	ms := secretMatches(v.Text)
+	return mergeSecrets(append(ms, urlPasswordsAround(v.Text, ms)...))
 }
 
-// findURLPasswordSpans finds the password of every user:password@ in a URL,
-// placeholders, a password equal to its user and example hosts included,
-// which the scan doesn't count but a copy should clear all the same.
+// urlPasswordsAround returns, as matches to merge with ms, the passwords in URLs
+// that a secret among ms overlaps and doesn't cover. A secret that's the whole
+// password keeps its name and its mode. A password beside it may work, so the span
+// reads as live, unless it's at a host reserved for examples.
+func urlPasswordsAround(text string, ms []secretMatch) []secretMatch {
+	p := urlPasswordPattern
+	if len(ms) == 0 || !p.pre(text) {
+		return nil
+	}
+	secrets := mergeSecrets(ms)
+	var out []secretMatch
+	for _, loc := range p.re.FindAllStringSubmatchIndex(text, -1) {
+		start, end := loc[4], loc[5]
+		k, hit := spanAt(secrets, start, end)
+		if !hit || secrets[k].Start <= start && secrets[k].End >= end {
+			continue
+		}
+		mode := p.mode(nil)
+		if notRealHost(strings.TrimPrefix(submatches(text, loc)[3], "@")) {
+			mode = secrets[k].Mode
+		}
+		out = append(out, secretMatch{start: start, end: end, pattern: urlPasswordIndex, mode: mode})
+	}
+	return out
+}
+
+// findURLPasswordSpans finds the password of every user:password@ in a URL or a
+// Go driver's DSN, placeholders, a password equal to its user and example hosts
+// included, which the scan doesn't count but a copy should clear all the same.
 func findURLPasswordSpans(v *TextView) []Span {
 	p := urlPasswordPattern
 	if len(v.Text) < 9 || !p.pre(v.Text) {

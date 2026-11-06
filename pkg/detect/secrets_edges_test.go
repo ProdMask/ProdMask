@@ -208,6 +208,9 @@ func TestPatternsHaveGates(t *testing.T) {
 func hintCases() []secretCase {
 	g := newTokGen(35)
 	var out []secretCase
+	for _, network := range []string{"(db:3306)", "tcp(db:3306)", "tcp4(db:3306)", "tcp6([2001:db8::5]:3306)", "unix(/run/mysqld.sock)"} {
+		out = append(out, secretCase{"app:" + g.mixed(tAlnum, 14) + "@" + network + "/shop", urlPasswordKind, "live"})
+	}
 	for _, p := range []string{"glpat-", "gldt-", "glrt-", "glptt-", "glcbt-", "gloas-", "glft-", "glimt-", "glsoat-", "glagent-"} {
 		out = append(out, secretCase{p + g.of(tB64U, 24), "GitLab token", "live"})
 	}

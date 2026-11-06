@@ -60,9 +60,8 @@ func urlHostCounted(pw string) []string {
 		appURL + "(password@db.internal.shop/x",
 		appURL + "(passwordX@db.internal.shop/x",
 		appURL + "xpassword)@db.internal.shop/x",
-		// The longest scheme and user.
+		// The longest scheme.
 		"abcdefghijklmnop://app:" + pw + "@db.internal.shop/x",
-		"mysql://" + strings.Repeat("u", 64) + ":" + pw + "@db.internal.shop/x",
 		// Only a host and a port with nothing after the @ read as no password.
 		appURL + "12345@/shop",
 		shopURL + "8443@db.internal.shop/x",
@@ -179,9 +178,8 @@ func urlNoPassword() []string {
 		"see https://shop.fixture.gr:8443, or write to ops@acme-widgets.gr",
 		"git+ssh://git@git.fixture-host.gr:shop/app.git@v1.2",
 		"ftp://anonymous:@ftp.fixture-host.gr/x",
-		// Past the longest scheme and user, and no URL at a word's start.
+		// Past the longest scheme, and no URL at a word's start.
 		"abcdefghijklmnopq://app:aZ7aZ8aZ9aZ0@db.internal.shop/x",
-		"mysql://" + strings.Repeat("u", 65) + ":aZ7aZ8aZ9aZ0@db.internal.shop/x",
 		"_mysql://app:aZ7aZ8aZ9aZ0@db.internal.shop/x",
 	}
 }
@@ -262,16 +260,20 @@ func TestFindSecretsURLEscapedAt(t *testing.T) {
 	}
 }
 
-// TestURLStops checks that each byte that ends a URL's password does, and that
-// the same ones end its user.
+// TestURLStops checks that each byte that ends a URL's password does, unless a
+// password may hold it, and that all of them end its user.
 func TestURLStops(t *testing.T) {
 	pw := newTokGen(67).mixed(tAlnum, 14)
 	for i := 0; i < len(urlStops); i++ {
 		v := appURL + pw + string(urlStops[i]) + "x@db.internal.shop/shop"
-		if got := hitsString(FindSecrets(v)); got != "" {
+		want, spans := "password in a URL (live)", 1
+		if strings.IndexByte(urlHardStops, urlStops[i]) >= 0 {
+			want, spans = "", 0
+		}
+		if got := hitsString(FindSecrets(v)); got != want {
 			t.Errorf("%q: got [%s]", v, got)
 		}
-		if sp := urlPasswordSpans(v); len(sp) != 0 {
+		if sp := urlPasswordSpans(v); len(sp) != spans {
 			t.Errorf("%q: spans %+v", v, sp)
 		}
 	}

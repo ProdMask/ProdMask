@@ -736,6 +736,14 @@ func allTestValues() []string {
 	out = append(out, urlHostCounted(newTokGen(13).mixed(tAlnum, 14))...)
 	out = append(out, urlHostExamples(newTokGen(14).mixed(tAlnum, 14))...)
 	out = append(out, urlNoPassword()...)
+	out = append(out, goDSNCounted(newTokGen(15).mixed(tAlnum, 14))...)
+	out = append(out, goDSNExamples(newTokGen(16).mixed(tAlnum, 14))...)
+	out = append(out, goDSNNoPassword()...)
+	out = append(out, urlSchemeCounted(newTokGen(17).mixed(tAlnum, 14))...)
+	out = append(out, urlLongUsers(newTokGen(18).mixed(tAlnum, 14))...)
+	out = append(out, urlStopsCounted(newTokGen(19).mixed(tAlnum, 14))...)
+	out = append(out, urlStopsRefused(newTokGen(20).mixed(tAlnum, 14))...)
+	out = append(out, urlStopsExamples(newTokGen(21).mixed(tAlnum, 14))...)
 	// A credential the scan doesn't count doesn't hide a key that overlaps it.
 	out = append(out, "Authorization: Basic "+b64("deploybot")+"-api"+"key-"+newTokGen(12).mixed(tAlnum, 32))
 	for _, values := range benchCorpora() {
@@ -769,6 +777,9 @@ func FuzzFindSecrets(f *testing.F) {
 	f.Add("mysql://app:" + g.mixed(tAlnum, 12) + "@[2001:db8::5]:3306/x")
 	f.Add("mysql://app:" + g.mixed(tAlnum, 12) + "@db.test_env,ops@example.com;dev@acme.gr/x")
 	f.Add("redis://:" + g.mixed(tAlnum, 12) + "@h1:6379,redis://:" + g.mixed(tAlnum, 12) + "@h2:6379")
+	f.Add("app:" + g.mixed(tAlnum, 12) + "@tcp(db:3306)/x,b:" + g.mixed(tAlnum, 12) + "@unix(/run/x)/y")
+	f.Add("MY_SQL://" + strings.Repeat("u", 70) + ":" + g.mixed(tAlnum, 12) + "@db/x")
+	f.Add("mysql://app:ab/" + g.mixed(tAlnum, 12) + "?c#d'e@db/x,https://shop:port/u@x.gr")
 	f.Add(`{"url":"https:\/\/hooks.example\/x"}`)
 	kinds := map[string]bool{}
 	for _, p := range secretPatterns {

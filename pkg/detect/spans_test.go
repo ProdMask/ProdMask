@@ -571,6 +571,9 @@ func FuzzFindSpans(f *testing.F) {
 	f.Add(`{"n":"Line\n4242 4242 4242 4242\tjane@x.gr\\"}`)
 	f.Add("Authorization: Basic " + b64("sk_"+"live_"+g.of(tAlnum, 24)+":"))
 	f.Add("mysql://jane%40corp.gr:%40" + g.mixed(tAlnum, 12) + "@db/x?u=a%40b.gr")
+	f.Add("app:" + g.mixed(tAlnum, 12) + "%40tcp(db:3306)/x,b:" + g.mixed(tAlnum, 12) + "@unix(/run/x)/y")
+	f.Add("mysql://app:" + g.mixed(tAlnum, 12) + ",sk_" + "live_" + g.of(tAlnum, 24) + "@db/x")
+	f.Add("mysql://app:ab/" + g.mixed(tAlnum, 12) + "?c#d'e%40db/x,https://shop:port/u@x.gr")
 	f.Fuzz(func(t *testing.T, s string) {
 		v := NewTextView(s)
 		prev := 0

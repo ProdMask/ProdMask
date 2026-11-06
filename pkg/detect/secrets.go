@@ -5,6 +5,7 @@ import (
 	"math/bits"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -179,10 +180,17 @@ func distinct(s string) int {
 var placeholderWords = words("password pass pwd passwd secret xxx *** changeme your_password token")
 
 func placeholder(s string) bool {
-	if s == "" || strings.IndexByte("{<$%[", s[0]) >= 0 || distinct(strings.ToLower(s)) <= 1 {
+	if s == "" || strings.IndexByte("{<$%[", s[0]) >= 0 || distinct(strings.ToLower(s)) <= 1 || oneCharacter(s) {
 		return true
 	}
 	return placeholderWords[strings.ToLower(s)]
+}
+
+// oneCharacter reports whether s is one character, repeated, as a document's
+// ellipsis or a form's row of dots is, past ASCII too.
+func oneCharacter(s string) bool {
+	_, size := utf8.DecodeRuneInString(s)
+	return strings.Count(s, s[:size])*size == len(s)
 }
 
 // randomPart reports whether some part of s, split on - and _, has 16 or
@@ -320,8 +328,13 @@ func cutHost(s string) (name, rest string) {
 // password at a real host: its name is reserved for examples, it's a word with
 // no dot right before another @, as in Admin@123@host, which is the password's,
 // or a bracket closes right after the @, as a format's description has it in
-// [user[:password]@]host. Only the first name of a list of hosts is read.
+// [user[:password]@]host. Only the first name of a list of hosts is read. The
+// host of a Go driver's DSN is its address, after the network.
 func notRealHost(after string) bool {
+	if network, addr, ok := strings.Cut(after, "("); ok && slices.Contains(goNetworks, network) {
+		name, _ := cutHost(addr)
+		return exampleHost(name)
+	}
 	hosts, _, more := strings.Cut(after, "@")
 	name, rest := cutHost(hosts)
 	if name == "" && rest != "" && strings.IndexByte(")]}", rest[0]) >= 0 {
@@ -345,13 +358,26 @@ func wordInBrackets(pw string) bool {
 // A password in a URL is at most this many characters long.
 const maxURLPassword = 128
 
-// urlPassword judges a password in a URL. It may hold an @, so each @ up to
-// the end of the URL may be the one that ends it, and it counts if any of those
-// readings does: an address or a host after the URL hides no password. Each
-// reads as it does once decoded: %40 starts a real password, and %7Bpassword%7D
-// is a template. If everything up to the last @ equals the user, it doesn't count.
+// A user in a URL with more characters than this holds only what an address or a
+// key does, or it's a row of fields.
+const maxPlainUser = 64
+
+// urlPassword judges a password in a URL. A DSN with no scheme has submatches of
+// its own: see goDSNCounts.
 func urlPassword(_ string, m []string) bool {
-	user, run := unescapeURL(m[1]), m[2]+m[3]
+	if len(m) > 4 {
+		return goDSNCounts(m)
+	}
+	return urlPasswordCounts(unescapeURL(m[1]), m[2]+m[3])
+}
+
+// urlPasswordCounts judges what follows a URL's user up to the end of the URL. A
+// password may hold an @, so each @ in it may be the one that ends the password,
+// and it counts if any of those readings does: an address or a host after the URL
+// hides no password. Each reads as it does once decoded: %40 starts a real
+// password, and %7Bpassword%7D is a template. If everything up to the last @ equals
+// the user, it doesn't count.
+func urlPasswordCounts(user, run string) bool {
 	if strings.EqualFold(unescapeURL(run[:strings.LastIndexByte(run, '@')]), user) {
 		return false
 	}
@@ -370,40 +396,219 @@ func urlPassword(_ string, m []string) bool {
 	return false
 }
 
-// urlHead is a URL up to the colon after its user, its first submatch.
-var urlHead = regexp.MustCompile(`\b[a-z][a-z0-9+.-]{1,15}://([^\s:/?#"'<>\\]{0,64}):`)
+// goNetworks are the networks a Go driver's DSN names after its @, as in
+// app:$PW@tcp(db:3306)/shop, that aren't a name the application chose. The empty
+// one is a DSN that names none, as in app:$PW@(db:3306)/shop.
+var goNetworks = []string{"", "tcp", "tcp4", "tcp6", "unix"}
 
-// urlStops are the bytes that end a URL's user and password.
-const urlStops = "\t\n\f\r /?#\"'<>\\"
+// urlHead is a URL up to the colon after its user, its first submatch, or the @
+// before the network of a Go driver's DSN with no scheme, which has no submatch.
+var urlHead = regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+._-]{1,15}://([^\s:/?#"'<>\\]*):|@(?:` + strings.Join(goNetworks, "|") + `)\(`)
 
-// urlPasswords finds passwords in URLs, as a regexp would: its submatches are
-// the user, the password, and what follows the password up to the end of the
-// URL. It isn't one because where a password ends depends on how the URL ends,
-// and what a regexp reads to see that is lost to its next search, such as the
-// scheme of a URL listed after this one.
+// urlStops are the bytes that end a URL's user and password. A password can hold
+// those of passwordStops too, which urlPasswordPastStop reads.
+const (
+	urlHardStops  = "\t\n\f\r \"<>\\"
+	passwordStops = "/?#'"
+	urlStops      = urlHardStops + passwordStops
+)
+
+// goDSNStops are the bytes that end the text before a DSN with no scheme. A
+// password can hold the other stops of a URL, since the driver reads it up to
+// the last @ before the database's name.
+const goDSNStops = "\t\n\f\r \"'`"
+
+// urlsNeedEscapes are the schemes whose clients don't take a /, ? or # in a
+// password, so that what's past one is a path: web links and repositories.
+var urlsNeedEscapes = words("http https ws wss ftp ftps sftp scp rsync smb nfs ssh git svn hg bzr cvs file")
+
+// urlPasswords finds passwords in URLs and Go drivers' DSNs, as a regexp would:
+// its submatches are the user, the password, and what follows the password up
+// to the end of the URL. It isn't one because where a password ends depends on
+// how the URL ends, and what a regexp reads to see that is lost to its next
+// search, such as the scheme of a URL listed after this one.
 type urlPasswords struct{}
 
 func (urlPasswords) FindAllStringSubmatchIndex(s string, n int) [][]int {
 	var out [][]int
+	from := 0 // where a DSN's text may start: past the last password or DSN's address
 	for off := 0; n < 0 || len(out) < n; {
 		head := urlHead.FindStringSubmatchIndex(s[off:])
 		if head == nil {
 			break
 		}
-		start, end := off+head[1], len(s)
-		if i := strings.IndexAny(s[start:], urlStops); i >= 0 {
-			end = start + i
+		if head[2] < 0 {
+			at, named := off+head[0], head[1]-head[0] > len("@(")
+			off += head[1]
+			// The address ends at its bracket, or if it's cut short, before an @ or a stop.
+			end := len(s)
+			if i := strings.IndexAny(s[off:], ")@"+urlHardStops); i >= 0 {
+				end = off + i
+			}
+			closed := end < len(s) && s[end] == ')'
+			// Only a port and the bracket's end say a DSN that names no network is one.
+			if !named && !(closed && strings.HasPrefix(s[end+1:], "/") && endsInPort(s[off:end])) {
+				continue
+			}
+			if loc := goDSNPassword(s, from, at, end); loc != nil {
+				out = append(out, loc)
+			}
+			from = off
+			if closed {
+				from = end + 1
+			}
+			continue
 		}
+		user := s[off+head[2] : off+head[3]]
+		if utf8.RuneCountInString(user) > maxPlainUser && runEnd(user, 0, &setLongUser) < len(user) {
+			off += head[2]
+			continue
+		}
+		start, end := off+head[1], urlEnd(s, off+head[1])
 		pw := start + urlPasswordEnd(s[start:end])
+		if pw == start {
+			pw, end = urlPasswordPastStop(s, s[off+head[0]:off+head[2]-len("://")], user, start, end)
+		}
 		if pw == start {
 			// No password. What read as its user may hold the next URL's scheme.
 			off += head[2]
 			continue
 		}
 		out = append(out, []int{off + head[0], pw, off + head[2], off + head[3], start, pw, pw, end})
-		off = pw
+		off, from = pw, pw
 	}
 	return out
+}
+
+// urlEnd returns where the URL that i is in ends, at the first stop.
+func urlEnd(s string, i int) int {
+	if j := strings.IndexAny(s[i:], urlStops); j >= 0 {
+		return i + j
+	}
+	return len(s)
+}
+
+// urlPasswordPastStop looks for a password that holds a stop, in a URL whose first
+// stop, at stop, has no @ before it. It returns where the password ends and where
+// what follows it does, or start if there's none. Some parsers take such a
+// password, though most need it escaped, and a stop is what keeps text out, so
+// each rule refuses what a URL followed by text may read as. What comes before the
+// first stop can't be a port, the user can't be a host, which has a dot and no @,
+// and a /, ? or # can't be in a web link or a repository's URL. A colon means
+// another URL, an IPv6 host or a did: name. Two quotes mean a string has closed,
+// and a stop right before the @ is a name in a path, as in /@jane. A TextView reads
+// %40 as an @, where a URL ends at its host, so the scan doesn't read past one, and
+// they agree.
+func urlPasswordPastStop(s, scheme, user string, start, stop int) (pw, end int) {
+	if strings.Contains(user, ".") && !strings.Contains(user, "@") && !strings.Contains(user, "%40") || portLike(s[start:stop]) {
+		return start, stop
+	}
+	family, _, _ := strings.Cut(strings.ToLower(scheme), "+")
+	escaped := urlsNeedEscapes[family]
+	last, quotes := start, 0
+	for i := start; i < min(len(s), start+4*maxURLPassword); i++ {
+		c := s[i]
+		switch {
+		case c == '@':
+			if i == last {
+				return start, stop
+			}
+			end = urlEnd(s, i)
+			return last + urlPasswordEnd(s[last:end]), end
+		case c == ':' || strings.IndexByte(urlHardStops, c) >= 0 || strings.HasPrefix(s[i:], "%40"):
+			return start, stop
+		case c == '\'':
+			if quotes++; quotes > 1 {
+				return start, stop
+			}
+			last = i + 1
+		case strings.IndexByte(passwordStops, c) >= 0:
+			if escaped {
+				return start, stop
+			}
+			last = i + 1
+		}
+	}
+	return start, stop
+}
+
+// digitsThenField reports whether s reads as a port or a time and what follows
+// it, as in 8443/x or 45,jane.
+func digitsThenField(s string) bool {
+	rest := strings.TrimLeft(s, "0123456789")
+	return rest != "" && len(rest) < len(s) && strings.IndexByte(",;/?&|).<\\", rest[0]) >= 0
+}
+
+// endsInPort reports whether s ends in a colon and digits.
+func endsInPort(s string) bool {
+	rest := strings.TrimRight(s, "0123456789")
+	return len(rest) < len(s) && strings.HasSuffix(rest, ":")
+}
+
+// portLike reports whether what follows a URL's first colon reads as a port:
+// nothing, digits, with another field after them or not, or the word itself.
+func portLike(s string) bool {
+	return strings.Trim(s, "0123456789") == "" || digitsThenField(s) || strings.EqualFold(s, "port")
+}
+
+// goDSNPassword reads the password that ends at the @ at at, in a DSN with no
+// scheme whose text starts at from or after the last stop before the @, and whose
+// address ends at end, with urlPasswords' submatches and one more. The password
+// starts after the first colon, as the driver reads it, so that none of it is
+// left. But the text may hold more than the DSN, so goDSNCounts reads it by the
+// last colon too: the user is then the first submatch, what comes before that
+// colon up to what can come before a DSN, and what's after the colon is the fourth.
+func goDSNPassword(s string, from, at, end int) []int {
+	start := from + strings.LastIndexAny(s[from:at], goDSNStops) + 1
+	colon := start
+	for {
+		i := strings.IndexByte(s[colon:at], ':')
+		if i < 0 {
+			return nil
+		}
+		colon += i
+		if !strings.HasPrefix(s[colon:], "://") {
+			break
+		}
+		colon += 3
+	}
+	if colon+1 == at {
+		return nil
+	}
+	last := start + strings.LastIndexByte(s[start:at], ':')
+	user := start + strings.LastIndexAny(s[start:last], ":=,;&?/([{|<>\\") + 1
+	return []int{start, at, user, last, colon + 1, at, at, end, last + 1, at}
+}
+
+// dsnLabels are words before a Go driver's DSN that aren't its user, as in
+// dsn:root@tcp(db)/x or {Source:root@tcp(db)/x}.
+var dsnLabels = words("url uri link source datasource datasourcename")
+
+func dsnLabel(user string) bool {
+	label := strings.ToLower(user)
+	return dsnLabels[label] || strings.HasSuffix(label, "dsn")
+}
+
+// goDSNCounts judges a password in a DSN with no scheme, of goDSNPassword's
+// submatches. A password can hold a colon, and text before a DSN can too, so it
+// counts by its first colon or by its last. A plain word between them is a user
+// after a label, as in mysql:root:root@tcp(db)/x, so only the last one reads there.
+// A label isn't a user. A port or a time and what follows it, as in
+// 12:30:45,root@tcp(db)/x, is text before a DSN that has no password, and so is what
+// follows a scheme's colon. A shell's escaped variable, as in app:\$PW@, is a
+// template.
+func goDSNCounts(m []string) bool {
+	if between := len(m[2]) - len(m[4]) - 1; between >= 0 && !plainWord(m[2][:between]) && !digitsThenField(m[2]) &&
+		urlPasswordCounts("", m[2]+m[3]) {
+		return true
+	}
+	return !dsnLabel(m[1]) && !digitsThenField(m[4]) && !strings.HasPrefix(m[4], "//") && !strings.HasPrefix(m[4], `\$`) && urlPasswordCounts(unescapeURL(m[1]), m[4]+m[3])
+}
+
+// plainWord reports whether s is letters, digits, dashes and underscores, without
+// the three kinds of character a generated part has.
+func plainWord(s string) bool {
+	return runEnd(s, 0, &setB64URL) == len(s) && kindsOf(s) < 3
 }
 
 // urlPasswordEnd returns where the password ends in the part of a URL after its
@@ -470,6 +675,7 @@ var (
 	setWord     = charSet("A-Za-z0-9_")
 	setHex      = charSet("0-9a-f")
 	setDNS      = charSet("A-Za-z0-9.-")
+	setLongUser = charSet("A-Za-z0-9._%+=@-")
 )
 
 // boundedToken looks for prefix with an acceptable byte before it, then a
@@ -586,11 +792,16 @@ func mailgunShape(s string) bool {
 	return false
 }
 
-// urlUserInfo looks for ://, then a colon, then @, before any /, ?, #,
-// space or quote.
+// urlUserInfo looks for what urlPasswords may read: an @ and a Go driver's
+// network, or ://, then a colon, then @, before any stop no password holds. The
+// next :// ends a search, which keeps a value of many of them from being read
+// over and over.
 func urlUserInfo(s string) bool {
 	if strings.IndexByte(s, '@') < 0 {
 		return false
+	}
+	if strings.Contains(s, "@(") || strings.Contains(s, "@tcp") || strings.Contains(s, "@unix") {
+		return true
 	}
 	for rest := s; ; {
 		i := strings.Index(rest, "://")
@@ -599,16 +810,20 @@ func urlUserInfo(s string) bool {
 		}
 		rest = rest[i+3:]
 		colon := false
+	search:
 		for j := 0; j < len(rest); j++ {
-			c := rest[j]
-			if c == ':' {
+			switch c := rest[j]; {
+			case c == ':':
+				if strings.HasPrefix(rest[j:], "://") {
+					break search
+				}
 				colon = true
-			} else if c == '@' {
+			case c == '@':
 				if colon {
 					return true
 				}
-			} else if strings.IndexByte("/?#\"' \t\r\n", c) >= 0 {
-				break
+			case strings.IndexByte(urlHardStops, c) >= 0:
+				break search
 			}
 		}
 	}
@@ -811,8 +1026,10 @@ var secretPatterns = []secretPattern{
 	{kind: "password in a Basic Authorization header", pre: basicValue, group: 1, mode: constMode("live"),
 		re: rx(`^` + ci("basic") + `[ \t]+([A-Za-z0-9+/]{8,}={0,2})\s*$`), basic: true},
 	// A user or password may hold an @, written plainly or as %40, which a TextView
-	// reads as @, and the host may be empty or bracketed.
-	{kind: "password in a URL", pre: urlUserInfo, mode: constMode("live"), valid: urlPassword, re: urlPasswords{}},
+	// reads as @, and the host may be empty or bracketed. A Go driver's DSN reads as
+	// a URL, with or without a scheme.
+	{kind: "password in a URL", hints: []string{"://", "@(", "@tcp", "@unix"}, pre: urlUserInfo, mode: constMode("live"), valid: urlPassword,
+		re: urlPasswords{}},
 	// Fallbacks: a known format overlapping one of these is reported as itself. The
 	// self-labelled key comes first, so a key with a mode wins over a bearer header.
 	{kind: "self-labelled API key", hints: []string{"apikey", "api_key", "api-key"}, fold: true, mode: labelledMode,
@@ -1030,7 +1247,7 @@ func findSecrets(s string, prefilter bool) []SecretHit {
 		s = strings.ReplaceAll(s, `\/`, "/")
 	}
 	found := hints.scan(s)
-	if prefilter && found.empty() && len(s) < 50 && !strings.Contains(s, "://") && !bearerValue(s) && !basicValue(s) {
+	if prefilter && found.empty() && len(s) < 50 && !bearerValue(s) && !basicValue(s) {
 		return nil
 	}
 	var hits []SecretHit
