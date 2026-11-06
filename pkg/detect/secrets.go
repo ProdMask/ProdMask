@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // SecretHit is one secret-looking string. Mode is "live", "test" or "" when
@@ -31,9 +32,14 @@ type edge struct {
 	allowSet    bool
 }
 
+// submatcher finds a pattern's matches: a regexp, or what acts as one.
+type submatcher interface {
+	FindAllStringSubmatchIndex(s string, n int) [][]int
+}
+
 type secretPattern struct {
 	kind string
-	re   *regexp.Regexp
+	re   submatcher
 	mode func(m []string) string
 	// hints are literals, one of which the value must hold; fold matches
 	// them ignoring ASCII case. pre is a structural check, for formats whose
@@ -236,23 +242,26 @@ func bearerToken(_ string, m []string) bool {
 // readBasic reads a Basic credential that pattern own found. A secret in its
 // decoded user or password is reported as itself, with its mode, whatever
 // the other part holds: an API key is often sent as the user, with an empty
-// password. The rest goes by basicCounts, where the credential reads as text.
-// One with no secret that doesn't count is still found, as a placeholder, for
-// a copy to clear.
+// password. A password beside a key in the user goes by basicCounts, and so
+// does a credential with no secret, where it reads as text. What doesn't count
+// is still found, as a placeholder, for a copy to clear: beside a test key, it
+// may work, so the credential's span doesn't read as test mode.
 func readBasic(own int, m []string) []secretMatch {
 	d, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(m[1], "="))
 	if err != nil {
 		return nil
 	}
-	user, pw, _ := strings.Cut(string(d), ":")
+	// A newline at the end, as echo leaves, isn't part of a password beside a key.
+	user, pw, _ := strings.Cut(strings.TrimRight(string(d), "\r\n"), ":")
 	inPassword := mergeMatches(counted(secretMatches(pw)))
 	out := append(mergeMatches(counted(secretMatches(user))), inPassword...)
 	credential := secretMatch{pattern: own, mode: secretPatterns[own].mode(m)}
 	switch {
-	case len(inPassword) > 0 || pw == "" && len(out) > 0 || !printableASCII(d):
+	case len(inPassword) > 0 || pw == "" && len(out) > 0:
+	case len(out) == 0 && !printableASCII(d):
 	case basicCounts(user, pw):
 		out = append(out, credential)
-	case len(out) == 0:
+	default:
 		credential.placeholder = true
 		out = append(out, credential)
 	}
@@ -279,7 +288,12 @@ func printableASCII(b []byte) bool {
 	return true
 }
 
+// exampleHost reports whether a host name is reserved for examples. One that
+// holds what DNS doesn't allow isn't: db.test_env isn't under .test.
 func exampleHost(host string) bool {
+	if runEnd(host, 0, &setDNS) < len(host) {
+		return false
+	}
 	h := strings.TrimSuffix(strings.ToLower(host), ".")
 	for _, d := range []string{"example.com", "example.net", "example.org"} {
 		if h == d || strings.HasSuffix(h, "."+d) {
@@ -289,11 +303,129 @@ func exampleHost(host string) bool {
 	return strings.HasSuffix(h, ".example") || strings.HasSuffix(h, ".test") || strings.HasSuffix(h, ".invalid")
 }
 
-// urlPassword judges a password in a URL as it reads once decoded: %40 starts
-// a real password, and %7Bpassword%7D is a template.
+// cutHost splits off the host name that s starts with: what a name may hold,
+// and what only continues one, such as an underscore, an escape, a letter past
+// ASCII or a byte that isn't text. Punctuation ends it, such as a closing quote.
+func cutHost(s string) (name, rest string) {
+	i := strings.IndexFunc(s, func(r rune) bool {
+		return r != '~' && r != utf8.RuneError && (r == '+' || !localRune(r))
+	})
+	if i < 0 {
+		return s, ""
+	}
+	return s[:i], s[i:]
+}
+
+// notRealHost reports whether the text after an @ in a URL doesn't put a
+// password at a real host: its name is reserved for examples, it's a word with
+// no dot right before another @, as in Admin@123@host, which is the password's,
+// or a bracket closes right after the @, as a format's description has it in
+// [user[:password]@]host. Only the first name of a list of hosts is read.
+func notRealHost(after string) bool {
+	hosts, _, more := strings.Cut(after, "@")
+	name, rest := cutHost(hosts)
+	if name == "" && rest != "" && strings.IndexByte(")]}", rest[0]) >= 0 {
+		return true
+	}
+	return more && rest == "" && !strings.Contains(name, ".") || exampleHost(name)
+}
+
+// hostAndPort reports whether what reads as a user and a password, with nothing
+// after the @, is a host and a port.
+func hostAndPort(user, pw, after string) bool {
+	return after == "" && strings.Contains(user, ".") && len(pw) <= 5 && strings.Trim(pw, "0123456789") == ""
+}
+
+// wordInBrackets reports whether a password is a placeholder word in
+// parentheses, as a format's description has it in (user):(password)@(host).
+func wordInBrackets(pw string) bool {
+	return strings.HasPrefix(pw, "(") && strings.HasSuffix(pw, ")") && placeholderWords[strings.ToLower(pw[1:len(pw)-1])]
+}
+
+// A password in a URL is at most this many characters long.
+const maxURLPassword = 128
+
+// urlPassword judges a password in a URL. It may hold an @, so each @ up to
+// the end of the URL may be the one that ends it, and it counts if any of those
+// readings does: an address or a host after the URL hides no password. Each
+// reads as it does once decoded: %40 starts a real password, and %7Bpassword%7D
+// is a template. If everything up to the last @ equals the user, it doesn't count.
 func urlPassword(_ string, m []string) bool {
-	user, pw := unescapeURL(m[1]), unescapeURL(m[2])
-	return !placeholder(pw) && !strings.EqualFold(pw, user) && !exampleHost(m[3])
+	user, run := unescapeURL(m[1]), m[2]+m[3]
+	if strings.EqualFold(unescapeURL(run[:strings.LastIndexByte(run, '@')]), user) {
+		return false
+	}
+	for at := 0; at < len(run); at++ {
+		if run[at] != '@' {
+			continue
+		}
+		if utf8.RuneCountInString(run[:at]) > maxURLPassword {
+			break
+		}
+		pw, after := unescapeURL(run[:at]), run[at+1:]
+		if !placeholder(pw) && !wordInBrackets(pw) && !strings.EqualFold(pw, user) && !hostAndPort(user, pw, after) && !notRealHost(after) {
+			return true
+		}
+	}
+	return false
+}
+
+// urlHead is a URL up to the colon after its user, its first submatch.
+var urlHead = regexp.MustCompile(`\b[a-z][a-z0-9+.-]{1,15}://([^\s:/?#"'<>\\]{0,64}):`)
+
+// urlStops are the bytes that end a URL's user and password.
+const urlStops = "\t\n\f\r /?#\"'<>\\"
+
+// urlPasswords finds passwords in URLs, as a regexp would: its submatches are
+// the user, the password, and what follows the password up to the end of the
+// URL. It isn't one because where a password ends depends on how the URL ends,
+// and what a regexp reads to see that is lost to its next search, such as the
+// scheme of a URL listed after this one.
+type urlPasswords struct{}
+
+func (urlPasswords) FindAllStringSubmatchIndex(s string, n int) [][]int {
+	var out [][]int
+	for off := 0; n < 0 || len(out) < n; {
+		head := urlHead.FindStringSubmatchIndex(s[off:])
+		if head == nil {
+			break
+		}
+		start, end := off+head[1], len(s)
+		if i := strings.IndexAny(s[start:], urlStops); i >= 0 {
+			end = start + i
+		}
+		pw := start + urlPasswordEnd(s[start:end])
+		if pw == start {
+			// No password. What read as its user may hold the next URL's scheme.
+			off += head[2]
+			continue
+		}
+		out = append(out, []int{off + head[0], pw, off + head[2], off + head[3], start, pw, pw, end})
+		off = pw
+	}
+	return out
+}
+
+// urlPasswordEnd returns where the password ends in the part of a URL after its
+// user, or 0 if it has none. It ends at the last @, so it may hold one. If an
+// earlier @ comes first and that last @ is an email address's, it ends before
+// the address, and before any others right before that one, for the email finder
+// to find: all that's then left of what may be the password is the delimiters.
+func urlPasswordEnd(run string) int {
+	first, end := strings.IndexByte(run, '@'), strings.LastIndexByte(run, '@')
+	if first == end {
+		return max(end, 0)
+	}
+	emails := findEmailSpans(&TextView{Text: run})
+	for i := len(emails) - 1; i >= 0; i-- {
+		e := emails[i]
+		if e.End < end || e.Start <= first || run[e.Start-1] == '@' {
+			break
+		}
+		_, delimiter := utf8.DecodeLastRuneInString(run[:e.Start])
+		end = e.Start - delimiter
+	}
+	return end
 }
 
 // unescapeURL reads the percent-escapes of a URL's user or password. Text with
@@ -337,6 +469,7 @@ var (
 	setBase32   = charSet("A-Z2-7")
 	setWord     = charSet("A-Za-z0-9_")
 	setHex      = charSet("0-9a-f")
+	setDNS      = charSet("A-Za-z0-9.-")
 )
 
 // boundedToken looks for prefix with an acceptable byte before it, then a
@@ -677,10 +810,9 @@ var secretPatterns = []secretPattern{
 		re: rx(authLead + ci("basic") + `\s+([A-Za-z0-9+/]{8,}={0,2})`), basic: true},
 	{kind: "password in a Basic Authorization header", pre: basicValue, group: 1, mode: constMode("live"),
 		re: rx(`^` + ci("basic") + `[ \t]+([A-Za-z0-9+/]{8,}={0,2})\s*$`), basic: true},
-	// The last @ before the path ends the password, so a user or password may
-	// hold one, written plainly or as %40, which a TextView reads as @.
-	{kind: "password in a URL", pre: urlUserInfo, mode: constMode("live"), valid: urlPassword,
-		re: rx(`\b[a-z][a-z0-9+.-]{1,15}://([^\s:/?#"'<>\\]{0,64}):([^\s/?#"'<>\\]{1,128})@([A-Za-z0-9.-]+)`)},
+	// A user or password may hold an @, written plainly or as %40, which a TextView
+	// reads as @, and the host may be empty or bracketed.
+	{kind: "password in a URL", pre: urlUserInfo, mode: constMode("live"), valid: urlPassword, re: urlPasswords{}},
 	// Fallbacks: a known format overlapping one of these is reported as itself. The
 	// self-labelled key comes first, so a key with a mode wins over a bearer header.
 	{kind: "self-labelled API key", hints: []string{"apikey", "api_key", "api-key"}, fold: true, mode: labelledMode,

@@ -444,8 +444,23 @@ func basicKeyCases() []basicKeyCase {
 		{"m\xc3\xbcller:" + live, liveHit, stripe, "live"},
 		// A test key is a test key, not a password.
 		{"svc:" + test, testHit, stripe, "test"},
+		{test, testHit, stripe, "test"},
+		{test + ":\n", testHit, stripe, "test"},
+		{test + ":\r\n", testHit, stripe, "test"},
+		{test + ":" + test, testHit, stripe, "test"},
+		{"password:" + test, testHit, stripe, "test"},
 		// A password goes on counting beside a key in the user.
 		{test + ":" + pw, testHit + ", password in a Basic Authorization header (live)", stripe, "live"},
+		{test + ":" + pw + "\n", testHit + ", password in a Basic Authorization header (live)", stripe, "live"},
+		{test + ":m\xc3\xbcller" + pw, testHit + ", password in a Basic Authorization header (live)", stripe, "live"},
+		// One that reads as an example isn't counted, but it may work, so the
+		// credential's span doesn't read as test mode.
+		{test + ":password", testHit, stripe, "live"},
+		{test + ":$PASSWORD", testHit, stripe, "live"},
+		{test + ":$" + pw, testHit, stripe, "live"},
+		{test + ":%PASS%", testHit, stripe, "live"},
+		{test + ":x", testHit, stripe, "live"},
+		{test + ":password\n", testHit, stripe, "live"},
 		// Each part as itself, and a specific format over the generic one.
 		{"AK" + "IA" + g.of(tUpper+tDigit, 16) + ":" + live, "AWS access key ID (live), " + liveHit, stripe, "live"},
 		{"c" + "k_" + g.of(tHex, 40) + ":" + "c" + "s_" + g.of(tHex, 40), "WooCommerce API key (live)", "WooCommerce API key", "live"},
@@ -718,6 +733,9 @@ func allTestValues() []string {
 		out = append(out, basicForms(b64(cred))...)
 	}
 	out = append(out, urlAtCases(newTokGen(11).mixed(tAlnum, 14))...)
+	out = append(out, urlHostCounted(newTokGen(13).mixed(tAlnum, 14))...)
+	out = append(out, urlHostExamples(newTokGen(14).mixed(tAlnum, 14))...)
+	out = append(out, urlNoPassword()...)
 	// A credential the scan doesn't count doesn't hide a key that overlaps it.
 	out = append(out, "Authorization: Basic "+b64("deploybot")+"-api"+"key-"+newTokGen(12).mixed(tAlnum, 32))
 	for _, values := range benchCorpora() {
@@ -748,6 +766,9 @@ func FuzzFindSecrets(f *testing.F) {
 	f.Add("Authorization: Basic " + b64("sk_"+"live_"+g.of(tAlnum, 24)+":"))
 	f.Add("Basic " + b64("x:Basic "+b64("x:Basic "+b64("sk_"+"test_"+g.of(tAlnum, 24)))))
 	f.Add("mysql://jane@corp.gr:%40" + g.mixed(tAlnum, 12) + "@db/x")
+	f.Add("mysql://app:" + g.mixed(tAlnum, 12) + "@[2001:db8::5]:3306/x")
+	f.Add("mysql://app:" + g.mixed(tAlnum, 12) + "@db.test_env,ops@example.com;dev@acme.gr/x")
+	f.Add("redis://:" + g.mixed(tAlnum, 12) + "@h1:6379,redis://:" + g.mixed(tAlnum, 12) + "@h2:6379")
 	f.Add(`{"url":"https:\/\/hooks.example\/x"}`)
 	kinds := map[string]bool{}
 	for _, p := range secretPatterns {

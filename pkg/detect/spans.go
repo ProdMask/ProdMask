@@ -733,8 +733,14 @@ func findIPSpans(v *TextView) []Span {
 func isHexByte(c byte) bool { return isDigitASCII(c) || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F' }
 
 // rePhoneAt is rePhoneIn anchored, for a window of phoneWindow bytes, which
-// holds its longest match.
-var rePhoneAt = regexp.MustCompile(`^(?:` + rePhoneIn.String() + `)`)
+// holds its longest match. It takes that longest match, where rePhoneIn takes
+// its first: groups of four stop at +44770090012, a digit short of
+// +447700900123, and the digit left over would then refuse the number.
+var rePhoneAt = func() *regexp.Regexp {
+	re := regexp.MustCompile(`^(?:` + rePhoneIn.String() + `)`)
+	re.Longest()
+	return re
+}()
 
 const phoneWindow = 48
 
@@ -757,12 +763,25 @@ func findPhoneSpans(v *TextView) []Span {
 		if a > 0 && isDigitASCII(s[a-1]) || b < len(s) && isDigitASCII(s[b]) {
 			continue
 		}
-		if ok, strict := phoneShape(s[a:b]); ok && strict && !isbn13(s[a:b]) {
+		if ok, strict := phoneShape(s[a:b]); ok && strict && !isbnAt(s, a, b) {
 			out = append(out, Span{Start: a, End: b, Kind: SpanPhone, Detail: "strict"})
 		}
 		i = b - 1
 	}
 	return out
+}
+
+// isbnAt reports whether the match s[a:b] of rePhoneAt is an ISBN-13, with what
+// the pattern can read around one: a number before it, as in
+// (13) 9783161484100, and a check digit standing alone after the match, as in
+// +978-88-04-12345-3, which is too short for a group of the pattern.
+func isbnAt(s string, a, b int) bool {
+	isbn := func(t string) bool { return isbn13(t) || isbn13(t[strings.IndexAny(t, ") .-")+1:]) }
+	if isbn(s[a:b]) {
+		return true
+	}
+	return b+1 < len(s) && strings.IndexByte(" .-", s[b]) >= 0 && isDigitASCII(s[b+1]) &&
+		(b+2 == len(s) || !isDigitASCII(s[b+2])) && isbn(s[a:b+2])
 }
 
 // findLoosePhoneSpans finds runs of 7 to 15 digits with separators that may

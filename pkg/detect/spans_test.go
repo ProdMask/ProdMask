@@ -78,10 +78,125 @@ func TestSpanPhones(t *testing.T) {
 		"order 123456, code 42":                    nil,
 		"ref ID12345678 stays":                     nil,
 		`{"tel":"x\n07700 900123"}`:                {"07700 900123"},
+		"Call +447700900123 now":                   {"+447700900123"},
+		"jane+447700900123@mail.fixture.gr":        nil,
+		"+10.20.30.40 12345":                       nil,
 	})
-	for in, detail := range map[string]string{"+30 210 555 0123": "strict", "07700 900123": "loose"} {
+	for in, detail := range map[string]string{"+30 210 555 0123": "strict", "07700 900123": "loose", "+447700900123": "strict"} {
 		if sp := FindSpans(in, SpanFinders()); len(sp) != 1 || sp[0].Detail != detail {
 			t.Errorf("%q: %+v, want detail %s", in, sp, detail)
+		}
+	}
+}
+
+// strictPhones runs the strict finder alone: through FindSpans, the loose one
+// would report what it misses.
+func strictPhones(s string) []string {
+	var out []string
+	for _, sp := range findPhoneSpans(NewTextView(s)) {
+		out = append(out, s[sp.Start:sp.End])
+	}
+	return out
+}
+
+func TestStrictPhones(t *testing.T) {
+	for in, want := range map[string][]string{
+		// No separators, one digit past what groups of four can take.
+		"+447700900123":                  {"+447700900123"},
+		"+306900000123":                  {"+306900000123"},
+		"+442079460123 ok":               {"+442079460123"},
+		"tel:+447700900123, mobile":      {"+447700900123"},
+		"+447700900123 or +306900000123": {"+447700900123", "+306900000123"},
+		`{"tel":"+447700900123"}`:        {"+447700900123"},
+		// The same, in a run of digits after a separator.
+		"+33 612345678":      {"+33 612345678"},
+		"+49 30 12345":       {"+49 30 12345"},
+		"+49 30 123456789":   {"+49 30 123456789"},
+		"+30 1234 56789 012": {"+30 1234 56789 012"},
+		"(210) 123456789":    {"(210) 123456789"},
+		"+44 (20) 123456789": {"+44 (20) 123456789"},
+		// Found before, and as whole as before.
+		"+14155550123":       {"+14155550123"},
+		"+44 7700 900123":    {"+44 7700 900123"},
+		"(555) 010-1234":     {"(555) 010-1234"},
+		"(210) 12345":        {"(210) 12345"},
+		"+1 (415) 5550123":   {"+1 (415) 5550123"},
+		"+1.415.555.0123":    {"+1.415.555.0123"},
+		"+14155550123 phone": {"+14155550123"},
+		// A digit next to the number makes it part of something longer.
+		"1+447700900123":      nil,
+		"+1234567890123456":   nil,
+		"(210) 1234567890123": nil,
+		// ISBNs, whole or with a check digit the pattern can't take. A plus
+		// comes from a URL's space, a number in parentheses from a label.
+		"+9783161484100":           nil,
+		"+978 3161484100":          nil,
+		"(978) 3161484100":         nil,
+		"(978)3161484100":          nil,
+		"+978-3-16-148410-0":       nil,
+		"(978-3-16-148410-0)":      nil,
+		"q=isbn+978-88-04-12345-3": nil,
+		"q=isbn+978-88-12345-67-0": nil,
+		"q=isbn+978-88-045-1234-9": nil,
+		"+978 88 04 12345 3":       nil,
+		"(13) 9783161484100":       nil,
+		"+13 9783161484100":        nil,
+		"(13) 978-88-04-12345-3":   nil,
+		// With a wrong check digit, none of them is an ISBN.
+		"+9783161484101":     {"+9783161484101"},
+		"+978 88 04 12345 4": {"+978 88 04 12345"},
+		// Dates.
+		"(2024-01-15)":              nil,
+		"(15/01/2024)":              nil,
+		"+15/01/2024":               nil,
+		"2024-01-15T10:30:00+0200":  nil,
+		"2024-01-15 10:30:00 +0200": nil,
+		"+2024-01-15 123456789":     nil,
+		// IP addresses.
+		"(192.168.100.200)":   nil,
+		"+10.0.0.1":           nil,
+		"10.0.0.1+1234567890": nil,
+		"(2001:db8::1)":       nil,
+		"+2001:db8::1":        nil,
+		// Cards.
+		"+4242424242424242":    nil,
+		"+4242 4242 4242 4242": nil,
+		"(4242) 424242424242":  nil,
+	} {
+		if got := strictPhones(in); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("strict phones of %q = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestStrictPhoneLengths checks every length of a run of digits after each way
+// a number can start: the whole run from the fewest digits a strict number has
+// to the 15 a phone number can have, and nothing outside those.
+func TestStrictPhoneLengths(t *testing.T) {
+	const digits = "447700900123456789012345678901234567"
+	for _, c := range []struct {
+		start  string
+		lo, hi int
+	}{
+		{"+", 8, 15},
+		{"+44 ", 6, 13},
+		{"+44-", 6, 13},
+		{"(210) ", 4, 12},
+		{"(210)", 4, 12},
+		{"+44 (20) ", 4, 11},
+	} {
+		for n := 1; n <= len(digits); n++ {
+			in := c.start + digits[:n]
+			var want []string
+			if n >= c.lo && n <= c.hi {
+				want = []string{in}
+			}
+			if got := strictPhones(in); strings.Join(got, "|") != strings.Join(want, "|") {
+				t.Errorf("strict phones of %q (%d digits after the start) = %q, want %q", in, n, got, want)
+			}
+			if got := strictPhones("call " + in + " now"); strings.Join(got, "|") != strings.Join(want, "|") {
+				t.Errorf("strict phones of %q in text = %q, want %q", in, got, want)
+			}
 		}
 	}
 }
