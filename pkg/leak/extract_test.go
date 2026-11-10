@@ -66,6 +66,8 @@ func TestExtractKinds(t *testing.T) {
 
 		{name: "strict phone", v: "call +30 697 123 4567 today", want: []string{"phone:306971234567"}},
 		{name: "phone with 00", v: "call +0030 697 123 4567", want: []string{"phone:306971234567"}},
+		{name: "phone with a one-digit group", v: "call +33 6 12 34 56 78 today", want: []string{"phone:33612345678"}},
+		{name: "phone before a date", v: "+14155550123 2024-01-02 called", want: []string{"phone:14155550123"}},
 		{name: "domestic phone in text isn't one", v: "order 6971234567 shipped", want: nil},
 		{name: "domestic phone in a phone column", w: wants{loosePhone: true}, v: "697 123 4567", want: []string{"phone:6971234567"}},
 		{name: "short phone", w: wants{loosePhone: true}, v: "555 0123", want: nil},
@@ -129,6 +131,7 @@ func TestExtractSameOnBothSides(t *testing.T) {
 	for _, forms := range [][]string{
 		{"jane@shop-mail.dev", "JANE@SHOP-MAIL.DEV", "jane%40shop-mail.dev", `{"e":"Jane@Shop-Mail.dev"}`},
 		{"+30 697 123 4567", "+306971234567", "+30-697-123-4567", "+0030 697 123 4567"},
+		{"+33 6 12 34 56 78", "+33612345678", "+33-6-12-34-56-78", "+33.6.12.34.56.78"},
 	} {
 		var first []string
 		for i, v := range forms {

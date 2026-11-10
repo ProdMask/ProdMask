@@ -13,7 +13,12 @@ var (
 	reEmailIn = regexp.MustCompile(`[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+([A-Za-z]{2,24})\b`)
 	reIPv4In  = regexp.MustCompile(`\b(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`)
 	reCardIn  = regexp.MustCompile(`\b\d(?:[ -]?\d){12,18}\b`)
-	rePhoneIn = regexp.MustCompile(`(?:\+\d{1,3}[ .-]?(?:\(\d{1,4}\)[ .-]?)?|\(\d{2,5}\)[ .-]?)\d{2,4}(?:[ .-]?\d{2,4}){1,4}`)
+	// A country code, with or without an area code in parentheses, or an area
+	// code alone, then groups of digits. One digit may stand alone after a
+	// country code, as in +33 6 12 34 56 78, or after its area code, as in
+	// +33 (0)1 23 45 67 89. After a country code, a dot beside that digit must
+	// be on both sides: +363 1.26301 is a number with decimals.
+	rePhoneIn = regexp.MustCompile(`(?:\+\d{1,3}(?:[ .-]?(?:\(\d{1,4}\)[ .-]?(?:\d[ .-])?)?|[ -]\d[ -]|\.\d\.)|\(\d{2,5}\)[ .-]?)\d{2,4}(?:[ .-]?\d{2,4}){1,4}`)
 
 	reDate = regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?.*)?|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})$`)
 	reUA   = regexp.MustCompile(`^(?:Mozilla/\d|Opera/\d|curl/\d|Wget/\d|python-requests/|okhttp/|Dalvik/|WordPress/|` +
@@ -137,7 +142,9 @@ func phoneShape(s string) (ok, strict bool) {
 		}
 		inDigits = false
 	}
-	if digits < 7 || digits > 15 || reDate.MatchString(s) || isIP(s) || thousands(s) {
+	// A plus doesn't make a date or an IP address a phone number.
+	bare := strings.TrimPrefix(s, "+")
+	if digits < 7 || digits > 15 || reDate.MatchString(bare) || isIP(bare) || thousands(s) {
 		return false, false
 	}
 	strict = (plus && digits >= 8) || parens || (seps >= 2 && groups >= 3)
@@ -166,8 +173,9 @@ func thousands(s string) bool {
 }
 
 func containsPhone(s string) bool {
-	for _, m := range rePhoneIn.FindAllString(s, 8) {
-		if ok, _ := phoneShape(strings.TrimSpace(m)); ok {
+	for _, loc := range rePhoneIn.FindAllStringIndex(s, 8) {
+		a, b := loc[0], loc[1]
+		if ok, _ := phoneShape(s[a:b]); ok && !isbnAt(s, a, b) || phoneEnd(s, a, b) > 0 {
 			return true
 		}
 	}

@@ -40,6 +40,10 @@ func TestPhoneShape(t *testing.T) {
 		{"2024-01-15", false, false},
 		{"1.234.567", false, false},
 		{"192.168.100.200", false, false},
+		{"+2024-01-15", false, false},
+		{"+15.01.2024", false, false},
+		{"+192.168.100.200", false, false},
+		{"+33 6 12 34 56 78", true, true},
 		{"12", false, false},
 		{"call me", false, false},
 	}
@@ -49,8 +53,24 @@ func TestPhoneShape(t *testing.T) {
 			t.Errorf("phoneShape(%q) = %v, %v; want %v, %v", c.in, ok, strict, c.ok, c.strict)
 		}
 	}
-	if !containsPhone("Call +30 210 555 0123 after 5pm") || containsPhone("Order 1234 shipped on 2024-01-15") {
-		t.Error("containsPhone misjudged text")
+	for s, want := range map[string]bool{
+		"Call +30 210 555 0123 after 5pm":      true,
+		"Order 1234 shipped on 2024-01-15":     false,
+		"Call +33 6 12 34 56 78 after 5pm":     true,
+		"Call +14155550123 2024-01-02 at 5pm":  true,
+		"From +30 210 555 0123 2024-01-02 5pm": true,
+		"Born in 1950, died +15.1.2024 there":  false,
+		"Added 2024-01-15 by +2024-01-15 here": false,
+		"Blocked +10.1.20.30 at the firewall":  false,
+		"ISBN +9783161484100 12345 is a book":  false,
+		"Code +1234567 went out to the phone":  true,
+		"Book +978-3-16-148410-0 is in print":  false,
+		"Book +9783161484100 is in print now":  false,
+		"Float 15059547p+71 3.55584e+28 here":  false,
+	} {
+		if containsPhone(s) != want {
+			t.Errorf("containsPhone(%q) = %v", s, !want)
+		}
 	}
 }
 

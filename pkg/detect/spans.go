@@ -784,15 +784,35 @@ func findPhoneSpans(v *TextView) []Span {
 			continue
 		}
 		a, b := i, i+loc[1]
-		if a > 0 && isDigitASCII(s[a-1]) || b < len(s) && isDigitASCII(s[b]) {
+		if a > 0 && isDigitASCII(s[a-1]) {
 			continue
 		}
-		if ok, strict := phoneShape(s[a:b]); ok && strict && !isbnAt(s, a, b) {
-			out = append(out, Span{Start: a, End: b, Kind: SpanPhone, Detail: "strict"})
+		if end := phoneEnd(s, a, b); end > 0 {
+			out = append(out, Span{Start: a, End: end, Kind: SpanPhone, Detail: "strict"})
 		}
 		i = b - 1
 	}
 	return out
+}
+
+// phoneEnd returns where the strict phone number at the start of s[a:b], a
+// match of rePhoneIn, ends, or 0 if the match starts with none. A match runs on
+// over digits that follow a number, as in +14155550123 2024-01-02, so where the
+// whole of it can't be one, the number is what the pattern reads up to a space,
+// as a loose phone ends at one. A match that reads as an ISBN gives no number.
+func phoneEnd(s string, a, b int) int {
+	for end := b; end > a; end = a + strings.LastIndexByte(s[a:end], ' ') {
+		if end < len(s) && isDigitASCII(s[end]) || end < b && len(rePhoneAt.FindString(s[a:end])) != end-a {
+			continue
+		}
+		if ok, strict := phoneShape(s[a:end]); ok && strict {
+			if isbnAt(s, a, end) {
+				return 0
+			}
+			return end
+		}
+	}
+	return 0
 }
 
 // isbnAt reports whether the match s[a:b] of rePhoneAt is an ISBN-13, with what
