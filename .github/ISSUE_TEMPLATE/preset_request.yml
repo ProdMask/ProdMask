@@ -1,0 +1,29 @@
+name: Platform or plugin request
+description: A platform, plugin or module whose tables the scan should know.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste real data.** Table and column names are fine; values aren't.
+  - type: input
+    id: name
+    attributes:
+      label: Platform, plugin or module
+      placeholder: Shopware 6, or the WooCommerce Subscriptions plugin
+    validations:
+      required: true
+  - type: textarea
+    id: tables
+    attributes:
+      label: Where it keeps personal data, secrets or settings
+      description: Tables, columns, option or meta keys, as far as you know them. A link to its schema helps.
+    validations:
+      required: true
+  - type: textarea
+    id: side-effects
+    attributes:
+      label: What a copy of it could do to real people
+      description: For example, mail it sends, payments it takes, jobs or webhooks it runs.
+    validations:
+      required: false

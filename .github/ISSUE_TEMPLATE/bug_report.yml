@@ -1,0 +1,38 @@
+name: Bug report
+description: An error, a crash, or something prodmask did that it shouldn't.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste real data.** No values from a real database: no emails, names, keys or rows. Reports from `prodmask scan` hold no values, so you can paste those. For a security issue, see [SECURITY.md](https://github.com/ProdMask/ProdMask/blob/main/SECURITY.md) instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `prodmask version`.
+      placeholder: v0.12.0
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Database server
+      description: MySQL or MariaDB, and its version.
+      placeholder: MariaDB 11.8
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you ran and what happened
+      description: The command, with the password left out, and the error or the part of the report that's wrong.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: false

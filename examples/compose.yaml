@@ -1,0 +1,16 @@
+# A throwaway MariaDB holding the fake shop, reachable from this machine only.
+# Start it with `docker compose up -d --wait`, remove it with `docker compose down -v`.
+services:
+  shop:
+    image: mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD: demo-root
+    ports:
+      - "127.0.0.1:3399:3306"
+    volumes:
+      - ./shop.sql:/docker-entrypoint-initdb.d/shop.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 60

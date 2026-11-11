@@ -1,0 +1,48 @@
+name: Wrong or missed finding
+description: The scan flagged something harmless, or missed something it should have found.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste real data.** Describe the shape of the value instead, such as "a 32-character hex string", or make up a value with the same shape. Table, column and key names are fine when they hold no data.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which kind
+      options:
+        - It flagged something that isn't sensitive
+        - It missed something sensitive
+        - The severity is wrong
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `prodmask version`.
+      placeholder: v0.12.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: WordPress, WooCommerce, Magento 2, Laravel, or your own schema, with plugin or module names if they matter.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where it is
+      description: The table, column, key or JSON path, and the line from the report if there is one.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: What the value looks like
+      description: Its shape, or a made-up value with the same shape. Never the real value.
+    validations:
+      required: true

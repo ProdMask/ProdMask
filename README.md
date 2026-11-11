@@ -1,5 +1,10 @@
 # prodmask
 
+[![CI](https://github.com/ProdMask/ProdMask/actions/workflows/ci.yml/badge.svg)](https://github.com/ProdMask/ProdMask/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ProdMask/ProdMask.svg)](https://pkg.go.dev/github.com/ProdMask/ProdMask)
+[![Release](https://img.shields.io/github/v/release/ProdMask/ProdMask)](https://github.com/ProdMask/ProdMask/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Find out what a plain copy of your production MySQL or MariaDB database would carry into staging, before you make one.
 
 `prodmask scan` connects read-only and samples a few hundred rows per table. It reports:
@@ -16,9 +21,13 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
   - scheduled subscription renewals and queued jobs.
 - **How the tables link up:** declared foreign keys, plus links inferred from naming and checked against the data, including Laravel polymorphic relations.
 
-It knows WordPress and WooCommerce, Magento 2 and Laravel, and works on any MySQL or MariaDB schema.
+It knows WordPress and WooCommerce, Magento 2 and Laravel, and works on any MySQL or MariaDB schema. Every change is tested against MySQL 8.4 and MariaDB 11.8.
 
 Reports name tables, columns, keys and JSON paths, with counts and categories. They never contain the sampled values. Key names can hold data too, such as a user's email address inside a meta key. Those are shown as patterns like `um_email_as_username_*`, one line for all the keys that share the pattern.
+
+It runs on your machine and connects only to the database you name. It sends nothing anywhere: no telemetry, no update checks.
+
+See a [sample report](https://prodmask.com/sample-report) from test databases filled with made-up customers, or scan the [fake shop](examples/) yourself before you point it at a database of your own.
 
 ## Install
 
@@ -59,7 +68,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |
-| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. Severities can rise between versions: v0.4.0 rates passwords stored as plain text critical. v0.5.0 adds critical findings for live keys in the new formats and for passwords in URLs and Basic headers, high ones for tokens whose mode can't be told and for `vendor_auth_code`, and medium ones for webhook names and test-mode keys; `sk-` findings on URL slugs go away. v0.9.0 rates a key inside a Basic credential as that key, so one sent as the user is now found, and one sent as the password can fall from critical: a test-mode key to medium, a token whose mode can't be told to high. It adds critical findings for a Basic credential with no password whose user reads as a random key, and for passwords in URLs that start with a percent-escape such as `%40`, or whose user holds a plain `@`. v0.10.0 adds critical findings for GitHub's stateless installation tokens, the long form an Actions `GITHUB_TOKEN` takes too. They had no finding before, or a high one after `Bearer` or `access_token=`. v0.11.0 adds critical findings for passwords in URLs at an IPv6 host, an empty host or a template such as `${DB_HOST}`, at a name that only looks reserved, such as `db.test_env` or `db_1.example.com`, and in URLs that a later address at a reserved host hid, as in `mysql://app:…@db.internal.shop,ops@example.com`. It adds one for a password that isn't ASCII beside a key in a Basic credential. A placeholder word in parentheses, such as `(password)`, no longer counts in a URL. v0.12.0 adds critical findings for passwords in Go driver DSNs with no scheme, such as `app:…@tcp(db:3306)/shop`, in URLs whose scheme has capitals or an underscore, such as `MYSQL://` or `pdo_mysql://`, or whose user is over 64 characters, and for passwords that hold a `/`, `?`, `#` or `'`, as in `mysql://app:…/…@db/shop`. A password of one character repeated no longer counts past ASCII either, such as `…`, and neither does a password whose `tcp(…)` address is at a host reserved for examples, as in `mysql://app:…@tcp(db.example.com:3306)/shop`. In free text, it adds medium findings for a phone number with one digit after the country code, such as `+33 6 12 34 56 78`, or followed by other digits, as in `+14155550123 2024-01-02`. A date or an IP address with a plus in front no longer counts as a phone number, and neither does an ISBN with a plus in free text |
+| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. A new version can find more, or rate a finding higher, so a gate that passed may fail after an upgrade: [CHANGELOG.md](CHANGELOG.md) lists each change |
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
@@ -195,6 +204,10 @@ The scanner is free and stays open source. prodmask Pro is a separate paid produ
 - check the result.
 
 Text and Markdown reports end with one line about it. See [prodmask.com](https://prodmask.com).
+
+## Security
+
+Report a security issue privately, as [SECURITY.md](SECURITY.md) explains, not in a public issue.
 
 ## License
 
