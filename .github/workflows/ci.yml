@@ -56,3 +56,29 @@ jobs:
         with:
           version: "~> v2"
           args: release --snapshot --clean
+
+  # Starts the fake shop in examples/ as the README says, and scans it with
+  # prodmask built from this commit.
+  demo:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Start the fake shop
+        working-directory: examples
+        run: docker compose up -d --wait
+      - name: Scan it
+        run: |
+          go run ./cmd/prodmask scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/shop' | tee "$RUNNER_TEMP/shop.txt"
+          grep -q 'What staging could do to real people' "$RUNNER_TEMP/shop.txt"
+        env:
+          PRODMASK_PASSWORD: demo
+      - name: Stop it
+        if: always()
+        working-directory: examples
+        run: docker compose down -v

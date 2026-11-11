@@ -21,13 +21,26 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
   - scheduled subscription renewals and queued jobs.
 - **How the tables link up:** declared foreign keys, plus links inferred from naming and checked against the data, including Laravel polymorphic relations.
 
-It knows WordPress and WooCommerce, Magento 2 and Laravel, and works on any MySQL or MariaDB schema. Every change is tested against MySQL 8.4 and MariaDB 11.8.
+It knows WordPress and WooCommerce, Magento 2 and Laravel, and works on any MySQL or MariaDB schema. Every change is tested against MySQL 8.4 and MariaDB 11.8. For Magento it handles 2.4, Open Source or Adobe Commerce, with or without a table prefix; its tests use a trimmed 2.4 schema with no prefix, and older releases aren't tested.
 
 Reports name tables, columns, keys and JSON paths, with counts and categories. They never contain the sampled values. Key names can hold data too, such as a user's email address inside a meta key. Those are shown as patterns like `um_email_as_username_*`, one line for all the keys that share the pattern.
 
 It runs on your machine and connects only to the database you name. It sends nothing anywhere: no telemetry, no update checks.
 
-See a [sample report](https://prodmask.com/sample-report) from test databases filled with made-up customers, or scan the [fake shop](examples/) yourself before you point it at a database of your own.
+See a [sample report](https://prodmask.com/sample-report) from test databases filled with made-up customers.
+
+## Try it in 60 seconds
+
+With Docker and [prodmask installed](#install), scan the [fake shop](examples/), a WooCommerce database full of invented customers, orders and keys:
+
+```bash
+git clone --depth 1 https://github.com/ProdMask/ProdMask.git
+cd ProdMask/examples
+docker compose up -d --wait
+PRODMASK_PASSWORD=demo prodmask scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/shop'
+```
+
+The first start downloads MariaDB and loads the shop, which takes a minute or so. `docker compose down -v` removes it all. [examples/README.md](examples/README.md) has the steps for PowerShell, and for loading the shop into a server of your own.
 
 ## Install
 
@@ -68,7 +81,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |
-| `--fail-on` | `none` | exit with status 3 if anything at or above `low`, `medium`, `high` or `critical` is found. A new version can find more, or rate a finding higher, so a gate that passed may fail after an upgrade: [CHANGELOG.md](CHANGELOG.md) lists each change |
+| `--fail-on` | `none` | exit with status 3 if anything at this severity or above is found: `low`, `medium`, `high` or `critical` |
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
@@ -83,6 +96,8 @@ In CI, scan the database your staging copy came from, or the copy itself, and fa
 ```bash
 prodmask scan --dsn "$STAGING_DSN" --fail-on high --format markdown --out prodmask-report.md
 ```
+
+With `--fail-on high`, the build fails on a high or critical finding, such as a column of customer emails or a live API key, and passes on medium and low ones, such as a test-mode key. A new version can find more, or rate a finding higher, so a build that passed may fail after an upgrade. [CHANGELOG.md](CHANGELOG.md) lists each change.
 
 ## Check a staging database for real values
 

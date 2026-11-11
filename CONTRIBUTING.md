@@ -22,7 +22,7 @@ CI runs them on MySQL 8.4 and MariaDB 11.8. Their findings are compared with the
 
 ## Test data
 
-- All of it is invented: phone numbers in the 555-01xx range, IP addresses from the documentation ranges, domains reserved for examples.
+- All of it is invented: phone numbers in the 555-01xx range, IP addresses from the documentation ranges, and made-up domain names.
 - Build anything shaped like an API key from pieces at run time, so no provider prefix sits next to its body. GitHub's push protection blocks a push that holds one, even in a test.
 
 ## Pull requests
