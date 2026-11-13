@@ -212,13 +212,19 @@ All fixture data is invented:
 
 ## prodmask Pro
 
-The scanner is free and stays open source. prodmask Pro is a separate paid product, in development. It will:
+The scanner is free and stays open source. prodmask Pro is a separate paid product that:
 
-- make small copies with the real shape and fake customers;
-- switch off the settings that let staging email or charge anyone;
-- check the result.
+- makes copies with the real shape and fake customers;
+- switches off the settings that let staging email or charge anyone;
+- checks the result.
 
 Text and Markdown reports end with one line about it. See [prodmask.com](https://prodmask.com).
+
+Pro's downloads are signed with minisign. Before you run one, check the release's `checksums.txt` against this key, the release key, whose key ID is `1B96620872FA537D`, and then your archive against `checksums.txt`, as [Install](#install) does:
+
+```bash
+minisign -Vm checksums.txt -P RWR9U/pyCGKWG6WkijsA6H8HDQghEFq7ix9bA4IdyMS9BsGbA9ctqOuP
+```
 
 ## Security
 
