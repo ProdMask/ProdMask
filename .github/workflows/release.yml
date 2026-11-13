@@ -1,25 +1,33 @@
 name: release
 
 # Pushing a tag such as v0.1.0 tests the code, builds prodmask for Linux,
-# macOS and Windows (amd64 and arm64), and publishes the archives with a
-# checksums.txt to GitHub Releases.
+# macOS and Windows (amd64 and arm64), publishes the archives with a
+# checksums.txt to GitHub Releases, and pushes the image
+# ghcr.io/prodmask/prodmask. check-image then runs the new image on both
+# processors.
 on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
+# Each job asks for only what it needs.
+permissions: {}
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub release
+      packages: write # the image on GHCR
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       # Release with the newest Go 1.27 patch release, for its security fixes;
       # go.mod only states the minimum version.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.x"
           check-latest: true
@@ -27,9 +35,75 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test -count=1 ./...
-      - uses: goreleaser/goreleaser-action@v7
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      # The builder's own image is pinned too, since it pushes the image. The
+      # same buildkit and GoReleaser pins are in ci.yml's release-build; bump
+      # both files together.
+      - name: Set up a multi-platform builder
+        run: docker buildx create --use --driver-opt image=moby/buildkit:v0.35.0@sha256:aa632b921ef07411d2cb77292cd34213d4f7b384001d6fceef1e1f25bf9752bb
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: "~> v2"
+          version: v2.18.3
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pass the version to check-image
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >>"$GITHUB_OUTPUT"
+
+  # Pulls the new image on both processors and scans the fake shop with it. It
+  # lives here because a release made with GITHUB_TOKEN starts no other
+  # workflow. The package is private until it's made public, so it logs in.
+  check-image:
+    needs: release
+    name: check-image (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      IMAGE: ghcr.io/prodmask/prodmask:${{ needs.release.outputs.version }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Pull the image
+        run: docker pull "$IMAGE"
+      - name: Check its version
+        run: test "$(docker run --rm "$IMAGE" version)" = "prodmask $VERSION"
+      # latest moves only on a final release, and must then name this image.
+      - name: Check latest is this release
+        if: ${{ !contains(needs.release.outputs.version, '-') }}
+        run: |
+          digest() { docker buildx imagetools inspect "$1" | awk '/^Digest:/ { print $2; exit }'; }
+          this=$(digest "$IMAGE")
+          latest=$(digest ghcr.io/prodmask/prodmask:latest)
+          test -n "$this"
+          test "$this" = "$latest"
+      - name: Start the fake shop
+        working-directory: examples
+        run: docker compose up -d --wait
+      - name: Scan it with the image
+        run: |
+          docker run --rm --network host -e PRODMASK_PASSWORD=demo "$IMAGE" \
+            scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/shop' >"$RUNNER_TEMP/shop.txt"
+          grep -q 'What staging could do to real people' "$RUNNER_TEMP/shop.txt"
+      - name: Stop the shop
+        if: always()
+        working-directory: examples
+        run: docker compose down -v

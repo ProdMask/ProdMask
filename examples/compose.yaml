@@ -14,3 +14,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 60
+
+  # Left out of `docker compose up` by its profile. PRODMASK_IMAGE picks
+  # another image, such as a pinned version.
+  scan:
+    image: ${PRODMASK_IMAGE:-ghcr.io/prodmask/prodmask:latest}
+    profiles: [scan]
+    depends_on:
+      shop:
+        condition: service_healthy
+    environment:
+      PRODMASK_PASSWORD: demo
+    command: ["scan", "--dsn", "mysql://prodmask_ro@shop:3306/shop"]

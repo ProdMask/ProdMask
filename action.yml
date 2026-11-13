@@ -1,0 +1,80 @@
+name: prodmask scan
+description: Find customer data, secrets and live payment or mail settings in a MySQL or MariaDB database. Read-only; no values shown.
+branding:
+  icon: database
+  color: blue
+
+# Every input reaches the scripts through env, never through the text of a
+# run line. The DSN and password reach prodmask as PRODMASK_DSN and
+# PRODMASK_PASSWORD, so they never appear on a command line.
+inputs:
+  dsn:
+    description: The database to scan, such as mysql://ci@db.internal:3306/shop. Pass it from a secret.
+    required: true
+  password:
+    description: The database password, if the DSN holds none. Pass it from a secret.
+    required: false
+    default: ""
+  fail-on:
+    description: "Fail the step if anything at this severity or above is found: none, low, medium, high or critical."
+    required: false
+    default: high
+  preset:
+    description: "Platform presets: auto, none, wordpress, woocommerce, magento2 or laravel."
+    required: false
+    default: auto
+  report:
+    description: Where to write the Markdown report. By default, a file in the runner's temporary folder.
+    required: false
+    default: ""
+  summary:
+    description: "Show the report as the job summary: auto (only in private repositories, since anyone can read a public repository's summaries), true or false."
+    required: false
+    default: auto
+  version:
+    description: The prodmask release to run, such as v0.13.0. By default, the release this action is pinned to.
+    required: false
+    default: ""
+
+outputs:
+  report:
+    description: The path of the Markdown report.
+    value: ${{ steps.scan.outputs.report }}
+  exit-code:
+    description: "prodmask's exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above fail-on."
+    value: ${{ steps.scan.outputs.exit-code }}
+  summary-written:
+    description: true if the report was written to the job summary.
+    value: ${{ steps.scan.outputs.summary-written }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install prodmask
+      id: install
+      shell: bash
+      env:
+        PM_VERSION: ${{ inputs.version }}
+        # GitHub's docs say a composite action reads its own ref through env.
+        PM_ACTION_REF: ${{ github.action_ref }}
+      run: bash "$GITHUB_ACTION_PATH/.github/action/action.sh" install
+    - name: Check whether this repository is private
+      id: visibility
+      if: inputs.summary == 'auto'
+      shell: bash
+      env:
+        PM_TOKEN: ${{ github.token }}
+      run: bash "$GITHUB_ACTION_PATH/.github/action/action.sh" visibility
+    - name: Scan the database
+      id: scan
+      shell: bash
+      env:
+        PRODMASK_DSN: ${{ inputs.dsn }}
+        PRODMASK_PASSWORD: ${{ inputs.password }}
+        PM_BIN: ${{ steps.install.outputs.bin }}
+        PM_FAIL_ON: ${{ inputs.fail-on }}
+        PM_PRESET: ${{ inputs.preset }}
+        PM_REPORT: ${{ inputs.report }}
+        PM_SUMMARY: ${{ inputs.summary }}
+        PM_PRIVATE: ${{ steps.visibility.outputs.private }}
+      run: bash "$GITHUB_ACTION_PATH/.github/action/action.sh" scan

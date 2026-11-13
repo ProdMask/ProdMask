@@ -1,3 +1,5 @@
 # Keep LF line endings on every platform; gofmt and the SQL fixtures expect them.
 * text=auto eol=lf
 *.exe binary
+# Keeps the demo GIF out of the tarball a runner downloads for the action.
+docs/demo.gif binary export-ignore

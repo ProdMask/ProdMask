@@ -1,12 +1,20 @@
 name: ci
 
+# A ci/... branch gets a full run before main moves to it: the release
+# runbook pushes one before each tag.
 on:
   push:
-    branches: [main]
+    branches: [main, "ci/**"]
   pull_request:
 
 permissions:
   contents: read
+
+# The release the action jobs below install: the newest whose reports fit the
+# wording rule. summary: true publishes a report in this public repository,
+# and v0.12.0's reports end with an old line about prodmask Pro.
+env:
+  PM_CI_RELEASE: v0.12.1
 
 jobs:
   test:
@@ -27,8 +35,10 @@ jobs:
           --health-cmd="mariadb-admin ping -h 127.0.0.1 -pci-only-root || mysqladmin ping -h 127.0.0.1 -pci-only-root"
           --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
       - name: Format
@@ -40,22 +50,90 @@ jobs:
         env:
           PRODMASK_TEST_DSN: root:ci-only-root@tcp(127.0.0.1:3306)/
 
-  # Builds every release target without publishing, so a broken release
-  # config or a platform-specific build error shows up before tagging.
+  # Builds every release target and both images without publishing, so a
+  # broken release config, a platform-specific build error or a broken image
+  # shows up before tagging. Then tests the amd64 image as the README uses it.
   release-build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.x"
           check-latest: true
-      - uses: goreleaser/goreleaser-action@v7
+      # The same buildkit and GoReleaser pins as release.yml's; bump both
+      # files together.
+      - name: Set up a multi-platform builder
+        run: docker buildx create --use --driver-opt image=moby/buildkit:v0.35.0@sha256:aa632b921ef07411d2cb77292cd34213d4f7b384001d6fceef1e1f25bf9752bb
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: "~> v2"
+          version: v2.18.3
           args: release --snapshot --clean
+      - name: Find the amd64 image
+        id: image
+        run: |
+          image=$(jq -r '[.[] | select(.type == "Docker Image") | .name
+            | select(endswith("-amd64") and (contains(":latest-") | not))] | first // empty' dist/artifacts.json)
+          test -n "$image"
+          echo "amd64=$image" >>"$GITHUB_OUTPUT"
+      - name: Check the image's user, size and CA bundle
+        env:
+          IMAGE: ${{ steps.image.outputs.amd64 }}
+        run: |
+          test "$(docker image inspect -f '{{.Config.User}}' "$IMAGE")" = 65532:65532
+          size=$(docker image inspect -f '{{.Size}}' "$IMAGE")
+          echo "unpacked size: $size bytes"
+          test "$size" -lt $((30 * 1024 * 1024))
+          docker run --rm --entrypoint /bin/sh "$IMAGE" -c 'test -s /etc/ssl/certs/ca-certificates.crt'
+      # The README's own command, from cold: Compose starts the shop, waits
+      # until it's healthy, then scans it with the image. The steps after
+      # this one reuse the running shop.
+      - name: Try it with only Docker, through Compose
+        working-directory: examples
+        env:
+          PRODMASK_IMAGE: ${{ steps.image.outputs.amd64 }}
+        run: |
+          docker compose run --rm scan >"$RUNNER_TEMP/compose.txt"
+          grep -q 'What staging could do to real people' "$RUNNER_TEMP/compose.txt"
+      - name: Scan it with the image
+        env:
+          IMAGE: ${{ steps.image.outputs.amd64 }}
+        run: |
+          docker run --rm --network host -e PRODMASK_PASSWORD=demo "$IMAGE" \
+            scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/shop' >"$RUNNER_TEMP/shop.txt"
+          grep -q 'What staging could do to real people' "$RUNNER_TEMP/shop.txt"
+      - name: Write a report to a mounted folder, as the README says
+        env:
+          IMAGE: ${{ steps.image.outputs.amd64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          docker run --rm --network host -e PRODMASK_PASSWORD=demo \
+            --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/out:/work" "$IMAGE" \
+            scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/shop' --format markdown --out report.md
+          grep -q 'What staging could do to real people' "$RUNNER_TEMP/out/report.md"
+      - name: Stop the shop
+        if: always()
+        working-directory: examples
+        run: docker compose --profile scan down -v
+      # The README ships in every archive, and Pro's wording rule holds there
+      # and in every binary. Only grep's exit 1, no match, passes: a match or
+      # an error fails, and so does anything but six binaries.
+      - name: Check the wording in the README and the binaries
+        run: |
+          set -e
+          git show HEAD:README.md >"$RUNNER_TEMP/README.tagged"
+          bins=$(find dist -mindepth 2 -maxdepth 2 -type f \( -name prodmask -o -name prodmask.exe \))
+          test "$(printf '%s\n' "$bins" | grep -c .)" -eq 6
+          for f in "$RUNNER_TEMP/README.tagged" $bins; do
+            rc=0; grep -qi -e 'in development' -e 'small copies' "$f" || rc=$?
+            test "$rc" -eq 1
+          done
 
   # Starts the fake shop in examples/ as the README says, and scans it with
   # prodmask built from this commit.
@@ -65,8 +143,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
       - name: Start the fake shop
@@ -82,3 +162,187 @@ jobs:
         if: always()
         working-directory: examples
         run: docker compose down -v
+
+  # The action in action.yml: its unit tests, and its install of a release on
+  # every hosted runner the README names.
+  action-install:
+    name: action install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Tools the action needs on Windows
+        if: runner.os == 'Windows'
+        run: |
+          for t in bash curl 7z cygpath; do
+            command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }
+          done
+      - name: Unit tests
+        run: bash .github/action/test.sh
+      - name: Install the release the way the action does
+        id: install
+        env:
+          PM_VERSION: ${{ env.PM_CI_RELEASE }}
+        run: bash .github/action/action.sh install
+      - name: Run it
+        env:
+          BIN: ${{ steps.install.outputs.bin }}
+        run: test "$("$BIN" version)" = "prodmask ${PM_CI_RELEASE#v}"
+      # The whole action on this runner, against a closed port: its path, the
+      # visibility check and the report's path, as each system writes them.
+      - name: Run the action against a closed port
+        id: closed
+        continue-on-error: true
+        uses: ./
+        with:
+          dsn: mysql://prodmask_ro@127.0.0.1:1/shop
+          version: ${{ env.PM_CI_RELEASE }}
+      - name: Check it failed with 1, with no summary
+        env:
+          OUTCOME: ${{ steps.closed.outcome }}
+          CODE: ${{ steps.closed.outputs.exit-code }}
+          WRITTEN: ${{ steps.closed.outputs.summary-written }}
+          REPORT: ${{ steps.closed.outputs.report }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$CODE" = 1
+          test "$WRITTEN" = false
+          if [ "$RUNNER_OS" = Windows ]; then
+            [[ $REPORT =~ ^[A-Za-z]:\\ ]]
+          fi
+
+  # The action on the fake shop: it passes with fail-on none and fails with
+  # fail-on high, after writing the summary.
+  action-shop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Start the fake shop
+        working-directory: examples
+        run: docker compose up -d --wait
+      - name: Scan with fail-on none
+        id: pass
+        uses: ./
+        with:
+          dsn: mysql://prodmask_ro@127.0.0.1:3399/shop
+          password: demo
+          fail-on: none
+          version: ${{ env.PM_CI_RELEASE }}
+      - name: Check it passed, with no summary in this public repository
+        env:
+          REPORT: ${{ steps.pass.outputs.report }}
+          CODE: ${{ steps.pass.outputs.exit-code }}
+          WRITTEN: ${{ steps.pass.outputs.summary-written }}
+        run: |
+          test "$CODE" = 0
+          test "$WRITTEN" = false
+          grep -q 'What staging could do to real people' "$REPORT"
+      - name: Scan with fail-on high and summary true
+        id: fail
+        continue-on-error: true
+        uses: ./
+        with:
+          dsn: mysql://prodmask_ro@127.0.0.1:3399/shop
+          password: demo
+          fail-on: high
+          summary: "true"
+          version: ${{ env.PM_CI_RELEASE }}
+      - name: Check it failed with 3, after writing the summary
+        env:
+          OUTCOME: ${{ steps.fail.outcome }}
+          CODE: ${{ steps.fail.outputs.exit-code }}
+          WRITTEN: ${{ steps.fail.outputs.summary-written }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$CODE" = 3
+          test "$WRITTEN" = true
+      # Runners fetch an action as this tarball; .gitattributes keeps the
+      # demo GIF out of it.
+      - name: Check the action's download leaves out the GIF
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f docs/demo.gif ]; then
+            echo "::notice::docs/demo.gif isn't in this commit yet, so there's no GIF to keep out of the download"
+            exit 0
+          fi
+          # The token reaches curl on stdin, never its command line.
+          printf 'Authorization: Bearer %s\n' "$GH_TOKEN" |
+            curl -fsSL -H @- -o "$RUNNER_TEMP/tree.tgz" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/tarball/$GITHUB_SHA"
+          tar -tzf "$RUNNER_TEMP/tree.tgz" >"$RUNNER_TEMP/tree.txt"
+          grep -q '/action.yml$' "$RUNNER_TEMP/tree.txt"
+          rc=0
+          grep -q '/docs/demo.gif$' "$RUNNER_TEMP/tree.txt" || rc=$?
+          test "$rc" -eq 1
+      - name: Stop the shop
+        if: always()
+        working-directory: examples
+        run: docker compose down -v
+
+  # The action against a closed port, with a password that isn't a secret, so
+  # nothing masks it: what the action prints must never hold it. The runner's
+  # own step headers echo inputs and env; the check after a push reads the
+  # job's log outside those headers.
+  action-no-leak:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Make a canary password
+        id: canary
+        run: echo "pw=canary-pw-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >>"$GITHUB_OUTPUT"
+      - name: Install the release the way the action does
+        id: install
+        env:
+          PM_VERSION: ${{ env.PM_CI_RELEASE }}
+        run: bash .github/action/action.sh install
+      - name: Scan a closed port, keeping everything the scan step prints
+        env:
+          PM_BIN: ${{ steps.install.outputs.bin }}
+          PRODMASK_DSN: mysql://prodmask_ro@127.0.0.1:1/shop
+          PRODMASK_PASSWORD: ${{ steps.canary.outputs.pw }}
+          PM_SUMMARY: "true"
+          PM_REPORT: ${{ runner.temp }}/leak-report.md
+        run: |
+          rc=0
+          bash .github/action/action.sh scan >"$RUNNER_TEMP/scan.log" 2>&1 || rc=$?
+          test "$rc" -eq 1
+          n=$(grep -c -F -e "$PRODMASK_PASSWORD" "$RUNNER_TEMP/scan.log" || true)
+          test "$n" -eq 0
+          test ! -e "$PM_REPORT"
+      - name: Run the action the same way, for the log check after the push
+        id: action
+        continue-on-error: true
+        uses: ./
+        with:
+          dsn: mysql://prodmask_ro@127.0.0.1:1/shop
+          password: ${{ steps.canary.outputs.pw }}
+          summary: "true"
+          version: ${{ env.PM_CI_RELEASE }}
+      - name: Check it failed with 1 and wrote no report
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          CODE: ${{ steps.action.outputs.exit-code }}
+          REPORT: ${{ steps.action.outputs.report }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$CODE" = 1
+          test ! -e "$REPORT"

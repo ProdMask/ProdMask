@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# Builds prodmask for Linux, macOS and Windows and publishes the archives with
-# a checksums file to GitHub Releases. Run by .github/workflows/release.yml
-# when a v* tag is pushed; try it locally with:
+# Builds prodmask for Linux, macOS and Windows, publishes the archives with a
+# checksums file to GitHub Releases, and pushes the image
+# ghcr.io/prodmask/prodmask. Run by .github/workflows/release.yml when a v*
+# tag is pushed; try it locally with:
 #   goreleaser release --snapshot --clean
 version: 2
 
@@ -37,6 +38,38 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+
+# The free scanner's image, ghcr.io/prodmask/prodmask, for linux/amd64 and
+# linux/arm64, from the binaries above. Built and pushed in the publish
+# phase; a snapshot loads one image per platform instead.
+dockers_v2:
+  - id: prodmask
+    ids: [prodmask]
+    dockerfile: goreleaser.Dockerfile
+    images:
+      - ghcr.io/prodmask/prodmask
+    # No major.minor tag: a minor release can change findings, so CI should
+    # pin an exact version.
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    # Buildx can't attach an SBOM when a snapshot loads into the local image
+    # store.
+    sbom: "{{ not .IsSnapshot }}"
+    labels: &image-metadata
+      org.opencontainers.image.title: prodmask
+      org.opencontainers.image.description: Check a MySQL or MariaDB database for customer data, secrets and settings that would let a staging copy email or charge real people. Read-only. Reports never show the values.
+      org.opencontainers.image.source: https://github.com/ProdMask/ProdMask
+      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+    # The same on the index, where GHCR reads a multi-platform image's
+    # description.
+    annotations: *image-metadata
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"
