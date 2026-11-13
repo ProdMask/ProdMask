@@ -1,5 +1,8 @@
 # A throwaway MariaDB holding the fake shop, reachable from this machine only.
 # Start it with `docker compose up -d --wait`, remove it with `docker compose down -v`.
+#
+# With only Docker, `docker compose run --rm scan` starts the shop and scans
+# it with prodmask's image; `docker compose --profile scan down -v` removes it all.
 services:
   shop:
     image: mariadb:11.8

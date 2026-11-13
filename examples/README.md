@@ -31,6 +31,8 @@ $env:PRODMASK_PASSWORD = 'demo'
 prodmask scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/shop'
 ```
 
+With only Docker, skip installing prodmask: `docker compose run --rm scan` starts the shop and scans it with prodmask's image. `docker compose --profile scan down -v` removes it all afterwards.
+
 Add `--format markdown --out report.md` to keep the report, or `--config-out prodmask.yml` to see the starter config it writes.
 
 When you're done, remove the container and its data:

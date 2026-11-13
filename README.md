@@ -44,6 +44,8 @@ PRODMASK_PASSWORD=demo prodmask scan --dsn 'mysql://prodmask_ro@127.0.0.1:3399/s
 
 The first start downloads MariaDB and loads the shop, which takes a minute or so. `docker compose down -v` removes it all. [examples/README.md](examples/README.md) has the steps for PowerShell, and for loading the shop into a server of your own.
 
+With only Docker, skip the install: in `examples/`, `docker compose run --rm scan` starts the shop and scans it with prodmask's image. `docker compose --profile scan down -v` removes it all.
+
 ## Install
 
 1. Download the archive for your system from the [releases page](https://github.com/ProdMask/ProdMask/releases). There are builds for Linux, macOS and Windows, each for amd64 and arm64.
@@ -69,6 +71,36 @@ Or build it from a checkout:
 ```bash
 go build -o prodmask ./cmd/prodmask
 ```
+
+### With Docker
+
+The image `ghcr.io/prodmask/prodmask` holds the same release, for linux/amd64 and linux/arm64. Pin a version, as you would in CI:
+
+```bash
+docker run --rm ghcr.io/prodmask/prodmask:0.13.0 version
+```
+
+To reach a database on your own machine:
+
+- **Linux:** add `--network host` and use `127.0.0.1` in the DSN. That also reaches a server listening on loopback only. Or add `--add-host host.docker.internal:host-gateway` and use `host.docker.internal`, which reaches only servers listening beyond loopback.
+- **Docker Desktop on macOS or Windows:** use `host.docker.internal` as the host, or turn on host networking (Docker Desktop 4.34 or later, in Settings). This is from Docker's docs, untested here.
+- **A database in the same Compose project:** use its service name as the host.
+
+Pass the password from your shell with `-e PRODMASK_PASSWORD`, so it isn't typed on the command line:
+
+```bash
+PRODMASK_PASSWORD='…' docker run --rm --network host -e PRODMASK_PASSWORD \
+  ghcr.io/prodmask/prodmask:0.13.0 scan --dsn 'mysql://prodmask_ro@127.0.0.1:3306/shop'
+```
+
+The report goes to standard output. For a file, mount a folder at `/work` and, on Linux, run as yourself so the file is yours:
+
+```bash
+docker run --rm --network host -e PRODMASK_PASSWORD --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+  ghcr.io/prodmask/prodmask:0.13.0 scan --dsn 'mysql://prodmask_ro@127.0.0.1:3306/shop' \
+  --format markdown --out report.md
+```
+
 
 ## Use
 
@@ -100,6 +132,59 @@ prodmask scan --dsn "$STAGING_DSN" --fail-on high --format markdown --out prodma
 ```
 
 With `--fail-on high`, the build fails on a high or critical finding, such as a column of customer emails or a live API key, and passes on medium and low ones, such as a test-mode key. A new version can find more, or rate a finding higher, so a build that passed may fail after an upgrade. [CHANGELOG.md](CHANGELOG.md) lists each change.
+
+### GitHub Actions
+
+The action runs the same scan in a workflow. Pin it to a release:
+
+```yaml
+- uses: ProdMask/ProdMask@v0.13.0
+  with:
+    dsn: ${{ secrets.STAGING_DSN }}
+    password: ${{ secrets.STAGING_DB_PASSWORD }}
+    fail-on: high
+```
+
+- **What it runs:** it downloads that release and checks it against `checksums.txt`. It fails the step on a finding at or above `fail-on`, which defaults to `high`.
+- **Your credentials:** the DSN and password reach prodmask through its environment, never a command line.
+- **What the log shows:** only prodmask's own lines. The Markdown report goes to the file named by the step's `report` output.
+
+**The job summary:**
+- In a private repository, the report also becomes the job summary.
+- In a public one it doesn't, since anyone can read a public repository's summaries, and the report names your tables and columns.
+- `summary: true` writes one anyway.
+
+To keep the report when a job in a private repository fails, upload it:
+
+```yaml
+- uses: ProdMask/ProdMask@v0.13.0
+  id: prodmask
+  with:
+    dsn: ${{ secrets.STAGING_DSN }}
+- uses: actions/upload-artifact@v7
+  if: always()
+  with:
+    name: prodmask-report
+    path: ${{ steps.prodmask.outputs.report }}
+```
+
+Anyone can download a public repository's artifacts too, so leave this step out there.
+
+- **Inputs:** `dsn` (required), `password`, `fail-on`, `preset`, `report`, `summary` (`auto`, `true` or `false`) and `version`.
+- **Outputs:** `report`, `exit-code` and `summary-written`.
+
+### Other CI systems
+
+The image also works as a job image, wherever a job runs its steps through a shell. GitLab CI needs its entrypoint cleared (untested here). Set `PRODMASK_DSN` and `PRODMASK_PASSWORD` as masked CI/CD variables; prodmask reads both, so neither is on a command line:
+
+```yaml
+prodmask:
+  image:
+    name: ghcr.io/prodmask/prodmask:0.13.0
+    entrypoint: [""]
+  script:
+    - prodmask scan --fail-on high
+```
 
 ## Check a staging database for real values
 

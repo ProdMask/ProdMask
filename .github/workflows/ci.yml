@@ -346,3 +346,48 @@ jobs:
           test "$OUTCOME" = failure
           test "$CODE" = 1
           test ! -e "$REPORT"
+
+  # The released action, pinned as users pin it: by its tag, and by the
+  # commit of that tag. That proves the action finds its own release end to
+  # end, as uses: ./ above can't.
+  action-pinned:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Start the fake shop
+        working-directory: examples
+        run: docker compose up -d --wait
+      - name: Scan it with the action pinned to its tag
+        id: tag
+        uses: ProdMask/ProdMask@v0.13.0
+        with:
+          dsn: mysql://prodmask_ro@127.0.0.1:3399/shop
+          password: demo
+          fail-on: none
+      - name: Scan it with the action pinned to the tag's commit
+        id: sha
+        uses: ProdMask/ProdMask@68d085dfade07f409daee6dfee1ed1765313b1d1 # v0.13.0
+        with:
+          dsn: mysql://prodmask_ro@127.0.0.1:3399/shop
+          password: demo
+          fail-on: none
+      - name: Check both scans
+        env:
+          TAG_CODE: ${{ steps.tag.outputs.exit-code }}
+          TAG_REPORT: ${{ steps.tag.outputs.report }}
+          SHA_CODE: ${{ steps.sha.outputs.exit-code }}
+          SHA_REPORT: ${{ steps.sha.outputs.report }}
+        run: |
+          test "$TAG_CODE" = 0
+          test "$SHA_CODE" = 0
+          grep -q 'What staging could do to real people' "$TAG_REPORT"
+          grep -q 'What staging could do to real people' "$SHA_REPORT"
+      - name: Stop the shop
+        if: always()
+        working-directory: examples
+        run: docker compose down -v
