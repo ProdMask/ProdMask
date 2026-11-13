@@ -7,6 +7,8 @@
 
 Find out what a plain copy of your production MySQL or MariaDB database would carry into staging, before you make one.
 
+![A terminal recording of prodmask scan on the fake shop: the summary, what staging could do to real people, and the findings by table](https://raw.githubusercontent.com/ProdMask/ProdMask/main/docs/demo.gif)
+
 `prodmask scan` connects read-only and samples a few hundred rows per table. It reports:
 
 - **Personal data and secrets:**
