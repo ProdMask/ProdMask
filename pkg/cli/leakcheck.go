@@ -377,6 +377,7 @@ turned up.
 		fmt.Fprintf(stderr, "prodmask: %v\n", err)
 		return ExitError
 	}
+	res.Edition = env.App.Edition
 
 	render := func(w io.Writer, color bool) error {
 		if *format == "json" {

@@ -73,6 +73,7 @@ const (
 type LeakResult struct {
 	Tool        string         `json:"tool"`
 	Version     string         `json:"version"`
+	Edition     string         `json:"edition,omitempty"` // "Pro" in a Pro build; empty, and left out, in the free build
 	GeneratedAt time.Time      `json:"generated_at"`
 	Server      ServerInfo     `json:"server"`
 	Database    string         `json:"database"`

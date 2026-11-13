@@ -128,6 +128,9 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 		fmt.Fprintf(stderr, "prodmask: %v\n", err)
 		return ExitError
 	}
+	// The reports name the build's edition; the starter config keeps the
+	// version alone.
+	res.Edition = env.App.Edition
 
 	if *configOut != "" {
 		if err := writeFile(*configOut, func(w io.Writer) error { return config.Write(w, res) }); err != nil {

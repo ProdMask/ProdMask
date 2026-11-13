@@ -40,7 +40,7 @@ const leakHowToRead = `How to read this
   - Only columns flagged on production are read. A value a script changed even slightly doesn't match: a real name before a swapped domain, a common home-made mask, reads as a zero. Values no longer on production, such as deleted customers, can't be sampled, so copies of them on staging aren't found.
   - Treat the hash file as personal data. Keep it as you keep production data, and delete it when you're done: https://github.com/ProdMask/ProdMask/blob/main/docs/leak-check.md
 
-prodmask Pro, in development, will make staging copies with fake customers and check the result row by row: https://prodmask.com/leak-check
+prodmask Pro makes staging copies with fake customers and checks the result row by row: https://prodmask.com/leak-check
 `
 
 func TestLeakTextWithHits(t *testing.T) {

@@ -86,7 +86,11 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 	st := style{opts.Color}
 	pf := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
 
-	pf("%s %s\n", st.bold("prodmask scan"), st.dim("· "+res.Database+" · "+serverLine(res)))
+	title := "prodmask scan"
+	if res.Edition != "" {
+		title = toolName(res.Edition, res.Version) + " scan"
+	}
+	pf("%s %s\n", st.bold(title), st.dim("· "+res.Database+" · "+serverLine(res)))
 	if len(res.Platforms) > 0 {
 		var ps []string
 		for _, p := range res.Platforms {
@@ -228,6 +232,8 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 	} else {
 		pf("%s\n", st.dim("Add --config-out prodmask.yml to write a starter masking config from these findings."))
 	}
-	pf("%s\n", st.dim(proLine))
+	if res.Edition == "" {
+		pf("%s\n", st.dim(proLine))
+	}
 	return b.Flush()
 }

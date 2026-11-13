@@ -17,9 +17,10 @@ import (
 // "sampled" and "found" so that a zero under it can't read as "none".
 const LeakHeadline = "Sampled production values found on this staging database"
 
-// leakProLine ends the text report: one line about the paid product, with a
-// link of its own and no tracking, the same for everyone.
-const leakProLine = "prodmask Pro, in development, will make staging copies with fake customers and check the result row by row: https://prodmask.com/leak-check"
+// leakProLine ends the free build's text report: one line about the paid
+// product, with a link of its own and no tracking, the same for everyone. A
+// build with an edition prints none.
+const leakProLine = "prodmask Pro makes staging copies with fake customers and checks the result row by row: https://prodmask.com/leak-check"
 
 const leakDocs = "https://github.com/ProdMask/ProdMask/blob/main/docs/leak-check.md"
 
@@ -125,7 +126,11 @@ func LeakText(w io.Writer, res *model.LeakResult, colors bool) error {
 	pf := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
 	s := res.Summary
 
-	pf("%s %s\n", st.bold("prodmask leak-check"), st.dim("· "+res.Database+" · "+leakServerLine(res)))
+	title := "prodmask leak-check"
+	if res.Edition != "" {
+		title = toolName(res.Edition, res.Version) + " leak-check"
+	}
+	pf("%s %s\n", st.bold(title), st.dim("· "+res.Database+" · "+leakServerLine(res)))
 	pf("Compared with values sampled from %s on %s · %d of %d columns read · %s rows · %s\n\n",
 		res.Hashes.Database, res.Hashes.CreatedAt.Format("2006-01-02"), s.ColumnsRead, s.Columns, thousands(s.RowsRead), seconds(s.DurationMillis))
 
@@ -198,7 +203,9 @@ func LeakText(w io.Writer, res *model.LeakResult, colors bool) error {
 	for _, l := range res.Limits {
 		pf("  - %s\n", l)
 	}
-	pf("\n%s\n", st.dim(leakProLine))
+	if res.Edition == "" {
+		pf("\n%s\n", st.dim(leakProLine))
+	}
 	return b.Flush()
 }
 

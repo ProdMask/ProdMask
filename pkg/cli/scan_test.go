@@ -261,6 +261,30 @@ func TestScanCommand(t *testing.T) {
 		t.Errorf("want only the two output files in %s, got %d entries", dir, len(entries))
 	}
 
+	// A build with an edition passes it to the reports: they name it, with the
+	// version's build metadata dropped, and have no line about prodmask Pro.
+	// The JSON report and the starter config keep the whole version.
+	pro := New("1.2.3+pro")
+	pro.Edition = "Pro"
+	proDir := t.TempDir()
+	proReport, proStarter := filepath.Join(proDir, "report.json"), filepath.Join(proDir, "prodmask.yml")
+	if code, _, stderr := run(pro, "scan", "--format", "json", "--out", proReport, "--config-out", proStarter); code != ExitOK {
+		t.Fatalf("a Pro build's scan: got status %d\nstderr: %q", code, stderr)
+	}
+	var proRes struct{ Version, Edition string }
+	proRaw, err := os.ReadFile(proReport)
+	if err != nil || json.Unmarshal(proRaw, &proRes) != nil || proRes.Version != "1.2.3+pro" || proRes.Edition != "Pro" {
+		t.Errorf("a Pro build's report.json: version %q, edition %q", proRes.Version, proRes.Edition)
+	}
+	proYml, err := os.ReadFile(proStarter)
+	if err != nil || !strings.Contains(string(proYml), "# Written by prodmask 1.2.3+pro on ") {
+		t.Errorf("a Pro build's prodmask.yml: %v\n%s", err, proYml)
+	}
+	code, proText, proStderr := run(pro, "scan", "--no-color")
+	if code != ExitOK || !strings.HasPrefix(proText, "prodmask Pro 1.2.3 scan · "+database+" · ") || strings.Contains(proText, "prodmask.com") {
+		t.Errorf("a Pro build's text report: got status %d\nstdout: %q\nstderr: %q", code, proText, proStderr)
+	}
+
 	code, _, again := run(New("1.2.3"), "scan", "--format", "json", "--out", report)
 	if code != ExitUsage || !strings.Contains(again, "already exists; use --force to overwrite it") {
 		t.Errorf("scan over an existing report: got status %d\nstderr: %q", code, again)
@@ -304,6 +328,8 @@ func TestScanCommand(t *testing.T) {
 	for name, out := range map[string]string{
 		"report.json": string(raw), "prodmask.yml": string(yml), "JSON scan's stderr": stderr,
 		"Markdown report": md, "Markdown scan's stderr": mdErr,
+		"Pro build's report.json": string(proRaw), "Pro build's prodmask.yml": string(proYml),
+		"Pro build's text report": proText + proStderr,
 	} {
 		if strings.Contains(out, canary) {
 			t.Errorf("the %s contains a sampled value", name)

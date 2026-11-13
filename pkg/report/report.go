@@ -17,9 +17,22 @@ import (
 // Headline is the question every report answers first.
 const Headline = "What a plain copy of this database would carry into staging"
 
-// proLine ends the text and Markdown reports: one line about the paid
-// product, with a plain link and no tracking.
-const proLine = "prodmask Pro, in development, will make copies of this database with the real shape and fake customers: https://prodmask.com"
+// proLine ends the free build's text and Markdown reports: one line about
+// the paid product, with a plain link and no tracking. A build with an
+// edition prints none.
+const proLine = "prodmask Pro makes copies of this database with the real shape and fake customers: https://prodmask.com"
+
+// toolName is how a report names the build that wrote it: "prodmask 1.2.3",
+// or with an edition "prodmask Pro 1.2.3", whose version drops its semver
+// build metadata (a Pro build's "+pro") for display only: the JSON report
+// and the starter config keep it.
+func toolName(edition, version string) string {
+	if edition == "" {
+		return "prodmask " + version
+	}
+	shown, _, _ := strings.Cut(version, "+")
+	return "prodmask " + edition + " " + shown
+}
 
 // JSON writes the full result as indented JSON.
 func JSON(w io.Writer, res *model.Result) error {

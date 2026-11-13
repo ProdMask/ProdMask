@@ -351,6 +351,26 @@ func TestLeakCheckEndToEnd(t *testing.T) {
 		t.Errorf("report: %.300s", reportJSON)
 	}
 
+	// A build with an edition passes it to the report: the text names it, with
+	// the version's build metadata dropped, and has no line about prodmask Pro;
+	// the JSON gives the edition beside the whole version.
+	pro := New("1.2.3+pro")
+	pro.Edition = "Pro"
+	code, stdout, stderr = run(pro, "leak-check", "compare", "--dsn", dsnOf(staging), "--key-file", keyPath, "--hashes", hashes, "--no-color")
+	note("a Pro build's compare text", stdout, stderr)
+	if code != ExitOK || !strings.HasPrefix(stdout, "prodmask Pro 1.2.3 leak-check · "+staging+" · ") ||
+		!strings.Contains(stdout, report.LeakHeadline) || strings.Contains(stdout, "prodmask.com") {
+		t.Errorf("a Pro build's compare: status %d\n%s%s", code, stdout, stderr)
+	}
+	proPath := filepath.Join(dir, "pro.json")
+	code, _, stderr = run(pro, "leak-check", "compare", "--dsn", dsnOf(staging), "--key-file", keyPath, "--hashes", hashes, "--format", "json", "--out", proPath)
+	proJSON, err := os.ReadFile(proPath)
+	note("a Pro build's report json", string(proJSON), stderr)
+	if code != ExitOK || err != nil || !strings.Contains(string(proJSON), `"version": "1.2.3+pro",`) ||
+		!strings.Contains(string(proJSON), `"edition": "Pro",`) {
+		t.Errorf("a Pro build's compare json: status %d, %v\n%s%.300s", code, err, stderr, proJSON)
+	}
+
 	// A wrong key is refused before anything's read.
 	other := filepath.Join(dir, "other.key")
 	if code, _, stderr := run(app, "leak-check", "key", "--out", other); code != ExitOK {

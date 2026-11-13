@@ -63,7 +63,8 @@ func Markdown(w io.Writer, res *model.Result) error {
 	}
 	pf("- **Scanned:** %d tables, %s, on %s, in %s\n", s.Tables-s.Views, sampling,
 		res.GeneratedAt.Format("2006-01-02 15:04 MST"), seconds(s.DurationMillis))
-	pf("- **Tool:** prodmask %s. The report lists names, counts and categories only; it contains no sampled values.\n\n", res.Version)
+	pf("- **Tool:** %s. The report lists names, counts and categories only; it contains no sampled values.\n\n",
+		toolName(res.Edition, res.Version))
 
 	pf("## %s\n\n", Headline)
 	groups := groupBySeverity(res.Findings)
@@ -144,6 +145,8 @@ func Markdown(w io.Writer, res *model.Result) error {
 		}
 		pf("\n")
 	}
-	pf("---\n\n%s\n", proLine)
+	if res.Edition == "" {
+		pf("---\n\n%s\n", proLine)
+	}
 	return b.Flush()
 }
