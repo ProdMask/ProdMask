@@ -77,7 +77,7 @@ go build -o prodmask ./cmd/prodmask
 The image `ghcr.io/prodmask/prodmask` holds the same release, for linux/amd64 and linux/arm64. Pin a version, as you would in CI:
 
 ```bash
-docker run --rm ghcr.io/prodmask/prodmask:0.13.0 version
+docker run --rm ghcr.io/prodmask/prodmask:0.13.2 version
 ```
 
 To reach a database on your own machine:
@@ -90,14 +90,14 @@ Pass the password from your shell with `-e PRODMASK_PASSWORD`, so it isn't typed
 
 ```bash
 PRODMASK_PASSWORD='…' docker run --rm --network host -e PRODMASK_PASSWORD \
-  ghcr.io/prodmask/prodmask:0.13.0 scan --dsn 'mysql://prodmask_ro@127.0.0.1:3306/shop'
+  ghcr.io/prodmask/prodmask:0.13.2 scan --dsn 'mysql://prodmask_ro@127.0.0.1:3306/shop'
 ```
 
 The report goes to standard output. For a file, mount a folder at `/work` and, on Linux, run as yourself so the file is yours:
 
 ```bash
 docker run --rm --network host -e PRODMASK_PASSWORD --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-  ghcr.io/prodmask/prodmask:0.13.0 scan --dsn 'mysql://prodmask_ro@127.0.0.1:3306/shop' \
+  ghcr.io/prodmask/prodmask:0.13.2 scan --dsn 'mysql://prodmask_ro@127.0.0.1:3306/shop' \
   --format markdown --out report.md
 ```
 
@@ -138,7 +138,7 @@ With `--fail-on high`, the build fails on a high or critical finding, such as a 
 The action runs the same scan in a workflow. Pin it to a release:
 
 ```yaml
-- uses: ProdMask/ProdMask@v0.13.0
+- uses: ProdMask/ProdMask@v0.13.2
   with:
     dsn: ${{ secrets.STAGING_DSN }}
     password: ${{ secrets.STAGING_DB_PASSWORD }}
@@ -157,7 +157,7 @@ The action runs the same scan in a workflow. Pin it to a release:
 To keep the report when a job in a private repository fails, upload it:
 
 ```yaml
-- uses: ProdMask/ProdMask@v0.13.0
+- uses: ProdMask/ProdMask@v0.13.2
   id: prodmask
   with:
     dsn: ${{ secrets.STAGING_DSN }}
@@ -180,7 +180,7 @@ The image also works as a job image, wherever a job runs its steps through a she
 ```yaml
 prodmask:
   image:
-    name: ghcr.io/prodmask/prodmask:0.13.0
+    name: ghcr.io/prodmask/prodmask:0.13.2
     entrypoint: [""]
   script:
     - prodmask scan --fail-on high
