@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/ProdMask/ProdMask/internal/testdb"
 	"github.com/ProdMask/ProdMask/pkg/fixture"
 )
 
@@ -121,10 +122,7 @@ func statelessToken(seed uint64) string {
 // GitHub tokens in columns whose names say nothing, one whole and one cut by the
 // 4096 characters the scan reads of a value. It needs PRODMASK_TEST_DSN.
 func TestScanFailOnStatelessGitHub(t *testing.T) {
-	dsn := os.Getenv("PRODMASK_TEST_DSN")
-	if dsn == "" {
-		t.Skip("PRODMASK_TEST_DSN is not set")
-	}
+	dsn := testdb.DSN(t)
 	adminCfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -199,10 +197,7 @@ func TestScanFailOnStatelessGitHub(t *testing.T) {
 // TestScanCommand runs prodmask scan end to end against a fixture database,
 // like pkg/scan's integration test. It needs PRODMASK_TEST_DSN.
 func TestScanCommand(t *testing.T) {
-	dsn := os.Getenv("PRODMASK_TEST_DSN")
-	if dsn == "" {
-		t.Skip("PRODMASK_TEST_DSN is not set")
-	}
+	dsn := testdb.DSN(t)
 	adminCfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		t.Fatal(err)

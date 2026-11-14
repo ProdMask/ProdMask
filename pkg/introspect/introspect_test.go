@@ -3,21 +3,19 @@ package introspect
 import (
 	"context"
 	"database/sql"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+
+	"github.com/ProdMask/ProdMask/internal/testdb"
 )
 
 // TestLoadColumns builds prodmask_fixture_introspect on the server in
 // PRODMASK_TEST_DSN, as the scan's integration tests do, and checks the
 // lengths, character sets and collations Load reads.
 func TestLoadColumns(t *testing.T) {
-	dsn := os.Getenv("PRODMASK_TEST_DSN")
-	if dsn == "" {
-		t.Skip("PRODMASK_TEST_DSN is not set")
-	}
+	dsn := testdb.DSN(t)
 	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		t.Fatal(err)

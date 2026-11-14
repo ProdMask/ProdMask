@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/ProdMask/ProdMask/internal/testdb"
 	"github.com/ProdMask/ProdMask/pkg/config"
 	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/fixture"
@@ -39,13 +40,10 @@ import (
 const canary = "zq7canary4x"
 
 // testServer connects to the server in PRODMASK_TEST_DSN as a user that can
-// create databases, or skips the test.
+// create databases, or testdb.DSN skips or fails the test.
 func testServer(t *testing.T) (*sql.DB, *mysql.Config) {
 	t.Helper()
-	dsn := os.Getenv("PRODMASK_TEST_DSN")
-	if dsn == "" {
-		t.Skip("PRODMASK_TEST_DSN is not set")
-	}
+	dsn := testdb.DSN(t)
 	adminCfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		t.Fatal(err)

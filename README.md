@@ -287,6 +287,8 @@ The integration tests build fake WordPress/WooCommerce, Magento 2 and Laravel da
 PRODMASK_TEST_DSN='root:…@tcp(127.0.0.1:3306)/' go test ./...
 ```
 
+With `PRODMASK_TEST_REQUIRE_ALL=1` as well (any value but `0` counts), a test that needs a server fails instead of skipping when `PRODMASK_TEST_DSN` isn't set.
+
 Their findings are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line.
 
 The scanner engine lives in importable packages under `github.com/ProdMask/ProdMask/pkg/...`. The command line is `pkg/cli`, which other builds can add commands to; `cmd/prodmask` is a thin main on top.

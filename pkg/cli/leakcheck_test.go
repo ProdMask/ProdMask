@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/ProdMask/ProdMask/internal/testdb"
 	"github.com/ProdMask/ProdMask/pkg/fixture"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/report"
@@ -233,10 +234,7 @@ func TestLeakStatus(t *testing.T) {
 // TestLeakCheckEndToEnd runs the three verbs as a user would, on fixture
 // databases: a full copy, then a masked one. It needs PRODMASK_TEST_DSN.
 func TestLeakCheckEndToEnd(t *testing.T) {
-	dsn := os.Getenv("PRODMASK_TEST_DSN")
-	if dsn == "" {
-		t.Skip("PRODMASK_TEST_DSN is not set")
-	}
+	dsn := testdb.DSN(t)
 	t.Setenv(keyEnv, "")
 	t.Setenv("PRODMASK_PASSWORD", "")
 	adminCfg, err := mysql.ParseDSN(dsn)

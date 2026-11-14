@@ -5,12 +5,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/ProdMask/ProdMask/internal/testdb"
 	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/fixture"
 	"github.com/ProdMask/ProdMask/pkg/model"
@@ -18,13 +18,10 @@ import (
 )
 
 // testServer connects to the server in PRODMASK_TEST_DSN as a user that can
-// create databases, or skips the test.
+// create databases, or testdb.DSN skips or fails the test.
 func testServer(t *testing.T) (*sql.DB, *mysql.Config) {
 	t.Helper()
-	dsn := os.Getenv("PRODMASK_TEST_DSN")
-	if dsn == "" {
-		t.Skip("PRODMASK_TEST_DSN is not set")
-	}
+	dsn := testdb.DSN(t)
 	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		t.Fatal("PRODMASK_TEST_DSN doesn't parse")
