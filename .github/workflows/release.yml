@@ -90,11 +90,18 @@ jobs:
       - name: Check latest is this release
         if: ${{ !contains(needs.release.outputs.version, '-') }}
         run: |
-          digest() { docker buildx imagetools inspect "$1" | awk '/^Digest:/ { print $2; exit }'; }
+          # The listing is read whole before awk looks at it, so buildx never
+          # writes into a pipe awk has closed, and a failed inspect says so.
+          # v0.13.1's check stopped here with exit 255 and no message.
+          digest() {
+            local out
+            out=$(docker buildx imagetools inspect "$1") || { echo "docker buildx imagetools inspect $1 failed with exit $?" >&2; return 1; }
+            awk '/^Digest:/ { print $2; exit }' <<<"$out"
+          }
           this=$(digest "$IMAGE")
           latest=$(digest ghcr.io/prodmask/prodmask:latest)
-          test -n "$this"
-          test "$this" = "$latest"
+          test -n "$this" || { echo "no digest in the listing of $IMAGE" >&2; exit 1; }
+          test "$this" = "$latest" || { echo "latest is $latest, not this release's $this" >&2; exit 1; }
       - name: Start the fake shop
         working-directory: examples
         run: docker compose up -d --wait
