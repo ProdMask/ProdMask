@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Never paste real data.** No values from a real database: no emails, names, keys or rows. Reports from `prodmask scan` hold no values, so you can paste those. For a security issue, see [SECURITY.md](https://github.com/ProdMask/ProdMask/blob/main/SECURITY.md) instead.
+        **Never paste real data.** No values from a real database: no emails, names, keys or rows. From a `prodmask scan` report, paste the lines in question: it holds no customer values, but a full report names your server, its user and your tables. For a security issue, see [SECURITY.md](https://github.com/ProdMask/ProdMask/blob/main/SECURITY.md) instead.
   - type: input
     id: version
     attributes:

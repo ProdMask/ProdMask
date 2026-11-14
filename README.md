@@ -25,7 +25,7 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
 
 It knows WordPress and WooCommerce, Magento 2 and Laravel, and works on any MySQL or MariaDB schema. Every change is tested against MySQL 8.4 and MariaDB 11.8. For Magento it handles 2.4, Open Source or Adobe Commerce, with or without a table prefix; its tests use a trimmed 2.4 schema with no prefix, and older releases aren't tested.
 
-Reports name tables, columns, keys and JSON paths, with counts and categories. They never contain the sampled values. Key names can hold data too, such as a user's email address inside a meta key. Those are shown as patterns like `um_email_as_username_*`, one line for all the keys that share the pattern.
+Reports name tables, columns, keys and JSON paths, with counts and categories. They never contain the sampled values. Key names can hold data too, such as a user's email address inside a meta key. Those are shown as patterns like `um_email_as_username_*`, one line for all the keys that share the pattern. A key that reads as a plain word, such as a login, is shown as it is ([which keys are hidden](docs/config.md#keys-the-scan-doesnt-show)).
 
 It runs on your machine and connects only to the database you name. It sends nothing anywhere: no telemetry, no update checks.
 
@@ -119,7 +119,7 @@ The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/pa
 | `--preset` | `auto` | `none`, `wordpress`, `woocommerce`, `magento2` or `laravel` |
 | `--sample-rows` | 300 | rows sampled per table |
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
-| `--no-samples` | | judge column names only; read no rows |
+| `--no-samples` | | judge column names only and sample no rows; the platform checks still read settings rows, unless `--preset none` |
 | `--timeout` | `10s` | server-side limit for each statement |
 | `--verbose` | | also list low-confidence matches, inferred relationships and full evidence |
 

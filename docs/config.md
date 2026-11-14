@@ -128,9 +128,11 @@ Pro adds two keys under a table:
 
 ### Keys the scan doesn't show
 
-A key name can itself be personal data, such as a customer's name or handle. The scan shows those keys as `(key hidden)`, and the starter config gets a comment saying what they hold, but no rule, since it can't name them without printing them. You can still write a rule for a key you know by its exact name: Pro matches it without printing it.
+A key name can itself be personal data. The scan hides a key that's shaped like data: an email address, an IP address, a UUID, a hash, a long token, a number of four digits or more, or any character but letters, digits, spaces and `_.:/-`. In a key/value table such a key shows as `(key hidden)`. Inside a stored value it shows as `*`, or as `[]` for a number. Where only part of a key looks like data, that part shows as `*`, as in `um_email_as_username_*`. The starter config gets a comment saying what hidden keys hold, but no rule, since it can't name them without printing them. You can still write a rule for a key you know by its exact name: Pro matches it without printing it.
 
-Pro doesn't print them either. In customer rows it replaces their names with keyed hashes and gives their values its default for customer data. In published content and settings, their values are kept, with the customer details Pro finds in them replaced.
+The rules work by shape, so a key can name a person and still be shown. A key that reads as a word, or in a key/value table as words with spaces, is shown as stored, and so is an IP address after a dot or one that reads like a version number, as in `rl.203.0.113.5` or `1.2.3.4`. A map keyed by logins, such as `{"jsmith": {"email": …}}`, shows as `jsmith.email`, and a key/value table keyed by full names shows them, so a report can hold a customer's handle or name. Read a report for such keys before you share it.
+
+Pro doesn't print hidden keys either. In customer rows it replaces their names with keyed hashes and gives their values its default for customer data. In published content and settings, their values are kept, with the customer details Pro finds in them replaced.
 
 ## Classes
 
