@@ -35,7 +35,7 @@ func runScan(ctx context.Context, env *Env, args []string) int {
 	dsn := fs.String("dsn", "", "connection string, mysql://user@host:3306/db or user@tcp(host:3306)/db\n(default $PRODMASK_DSN; the password may come from $PRODMASK_PASSWORD)")
 	sampleRows := fs.Int("sample-rows", scan.DefaultSampleRows, "rows to sample per table")
 	metaRows := fs.Int("meta-sample-rows", scan.DefaultMetaSampleRows, "rows to sample from a key/value table such as wp_postmeta\nthat is too big to read whole")
-	noSamples := fs.Bool("no-samples", false, "judge column names only and read no rows")
+	noSamples := fs.Bool("no-samples", false, "judge column names only and sample no rows; the platform checks\nstill read settings rows, unless --preset none")
 	format := fs.String("format", "text", "report format: text, markdown or json")
 	out := fs.String("out", "", "write the report to this file instead of standard output")
 	configOut := fs.String("config-out", "", "also write a starter masking config (YAML) to this file")
@@ -113,11 +113,7 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 	}
 	if interactive {
 		opts.Progress = func(done, total int, table string) {
-			if table == "" {
-				fmt.Fprint(stderr, "\r\x1b[K")
-				return
-			}
-			fmt.Fprintf(stderr, "\r\x1b[KScanning %d/%d %s", done+1, total, table)
+			fmt.Fprint(stderr, progressLine("Scanning", done, total, table))
 		}
 	}
 	res, err := scan.Run(ctx, sess, opts)

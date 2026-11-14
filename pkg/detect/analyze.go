@@ -34,7 +34,7 @@ type Subject struct {
 	DataType string   // information_schema DATA_TYPE; empty for meta keys
 	Context  []string // words of the table name
 	Hint     *Hint
-	Sampled  bool // false when values were not read (--no-samples)
+	Sampled  bool // false when no values were sampled (--no-samples)
 
 	Keys        int    // keys a pattern stands for, copied to the findings
 	KeysPartial bool   // Keys is a lower bound

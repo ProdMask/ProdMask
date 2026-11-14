@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ProdMask/ProdMask/pkg/detect"
 	"github.com/ProdMask/ProdMask/pkg/model"
 )
 
@@ -308,7 +309,11 @@ func Write(w io.Writer, res *model.Result) error {
 			pf("%s- from: %s\n", prefix, scalar(r.ChildTable+"."+strings.Join(r.ChildColumns, ",")))
 			pf("%s  to: %s\n", prefix, scalar(r.ParentTable+"."+strings.Join(r.ParentColumns, ",")))
 			if r.TypeValue != "" {
-				pf("%s  where: %s\n", prefix, scalar(r.TypeColumn+" = "+r.TypeValue))
+				typ, note := detect.ShowType(r.TypeValue), ""
+				if typ == detect.HiddenType {
+					note = comment("the stored value isn't shown, as it doesn't read as a class name")
+				}
+				pf("%s  where: %s%s\n", prefix, scalar(r.TypeColumn+" = "+typ), note)
 			}
 			ev := r.Source
 			if r.Checked > 0 {

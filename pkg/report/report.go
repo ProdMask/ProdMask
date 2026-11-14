@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ProdMask/ProdMask/pkg/detect"
 	"github.com/ProdMask/ProdMask/pkg/model"
 )
 
@@ -34,12 +35,21 @@ func toolName(edition, version string) string {
 	return "prodmask " + edition + " " + shown
 }
 
-// JSON writes the full result as indented JSON.
+// JSON writes the full result as indented JSON, with each polymorphic type
+// value as detect.ShowType shows it.
 func JSON(w io.Writer, res *model.Result) error {
+	shown := *res
+	if res.Relationships != nil {
+		shown.Relationships = make([]model.Relationship, len(res.Relationships))
+		for i, r := range res.Relationships {
+			r.TypeValue = detect.ShowType(r.TypeValue)
+			shown.Relationships[i] = r
+		}
+	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
-	return enc.Encode(res)
+	return enc.Encode(&shown)
 }
 
 // severityGroup is one line of the summary: how many findings of a
@@ -179,10 +189,20 @@ func relStats(rels []model.Relationship) (declared, confirmed, likely, weak, unv
 	return
 }
 
+// namesOnly is how a report says what a scan with --no-samples read: no
+// sampled rows, but the platform checks still read settings rows, unless no
+// platform was checked.
+func namesOnly(res *model.Result) string {
+	if len(res.Platforms) > 0 {
+		return "names only, no rows sampled; the platform checks read settings rows"
+	}
+	return "names only, nothing read but the schema"
+}
+
 func relString(r model.Relationship) string {
 	s := fmt.Sprintf("%s.%s → %s.%s", r.ChildTable, strings.Join(r.ChildColumns, ","), r.ParentTable, strings.Join(r.ParentColumns, ","))
 	if r.TypeValue != "" {
-		s += fmt.Sprintf(" (where %s = %s)", r.TypeColumn, r.TypeValue)
+		s += fmt.Sprintf(" (where %s = %s)", r.TypeColumn, detect.ShowType(r.TypeValue))
 	}
 	return s
 }

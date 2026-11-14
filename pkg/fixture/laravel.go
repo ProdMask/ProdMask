@@ -148,6 +148,11 @@ func (f *filler) laravel() {
 		if i%3 == 0 {
 			typ, target = "App\\Models\\Order", 1+g.intn(700)
 		}
+		if i%30 == 15 {
+			// A type value that names the orders table at its end, as a URL
+			// can: reports show it only as (type hidden).
+			typ = "https://" + TypeMarker + ".example/orders"
+		}
 		comments = append(comments, []any{1 + g.intn(nUsers), typ, target, strings.TrimSpace(g.sentence(12))})
 	}
 	f.insert("comments", []string{"user_id", "commentable_type", "commentable_id", "body"}, comments)

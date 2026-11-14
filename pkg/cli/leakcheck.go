@@ -228,18 +228,10 @@ Exit status: 0 done, 1 error or nothing to hash, 2 bad usage.
 	interactive := isTerminal(os.Stderr)
 	if interactive {
 		opts.ScanProgress = func(done, total int, table string) {
-			if table == "" {
-				fmt.Fprint(stderr, "\r\x1b[K")
-				return
-			}
-			fmt.Fprintf(stderr, "\r\x1b[KScanning %d/%d %s", done+1, total, table)
+			fmt.Fprint(stderr, progressLine("Scanning", done, total, table))
 		}
 		opts.Progress = func(done, total int, table string) {
-			if table == "" {
-				fmt.Fprint(stderr, "\r\x1b[K")
-				return
-			}
-			fmt.Fprintf(stderr, "\r\x1b[KSampling %d/%d %s", done+1, total, table)
+			fmt.Fprint(stderr, progressLine("Sampling", done, total, table))
 		}
 	}
 	f, warnings, err := leak.Hash(ctx, sess, key, opts)
@@ -247,7 +239,7 @@ Exit status: 0 done, 1 error or nothing to hash, 2 bad usage.
 		fmt.Fprintln(stderr)
 	}
 	for _, wn := range warnings {
-		fmt.Fprintf(stderr, "prodmask: warning: %s\n", wn)
+		fmt.Fprintf(stderr, "prodmask: warning: %s\n", report.Clean(wn))
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "prodmask: %v\n", err)
@@ -257,21 +249,27 @@ Exit status: 0 done, 1 error or nothing to hash, 2 bad usage.
 		fmt.Fprintln(stderr, "prodmask: can't write the file given to --out")
 		return ExitError
 	}
+	writeHashSummary(stdout, f)
+	return ExitOK
+}
+
+// writeHashSummary lists what hash put in the file. The names come from the
+// database, so they're cleaned before they reach the terminal.
+func writeHashSummary(w io.Writer, f *leak.File) {
 	var total int64
 	for _, c := range f.Columns {
 		total += int64(c.Values)
 	}
-	fmt.Fprintf(stdout, "Hash file written: %s values sampled from %d columns of %s.\n", report.Count(total), len(f.Columns), f.Database)
+	fmt.Fprintf(w, "Hash file written: %s values sampled from %d columns of %s.\n", report.Count(total), len(f.Columns), report.Clean(f.Database))
 	for _, c := range f.Columns {
-		fmt.Fprintf(stdout, "  %s  %s  %s\n", model.LeakLocation(c.Table, c.Column, c.MetaKey), c.Kind.Label(), report.Count(int64(c.Values)))
+		fmt.Fprintf(w, "  %s  %s  %s\n", report.Clean(model.LeakLocation(c.Table, c.Column, c.MetaKey)), c.Kind.Label(), report.Count(int64(c.Values)))
 	}
 	for _, l := range f.LeftOut {
 		if l.NotRead {
-			fmt.Fprintf(stdout, "  %s  %s: compare will count it as not read\n", l.Location, l.Why)
+			fmt.Fprintf(w, "  %s  %s: compare will count it as not read\n", report.Clean(l.Location), report.Clean(l.Why))
 		}
 	}
-	fmt.Fprintln(stdout, "Treat the file as personal data: keep it as you keep production data, and delete it after the check.")
-	return ExitOK
+	fmt.Fprintln(w, "Treat the file as personal data: keep it as you keep production data, and delete it after the check.")
 }
 
 func runLeakCompare(ctx context.Context, env *Env, args []string) int {
@@ -356,17 +354,13 @@ turned up.
 	opts := leak.CompareOptions{Allow: allowed, FailExcept: except, MaxTime: *maxTime, Version: env.App.Version,
 		Starting: func(tables int, rows int64) {
 			fmt.Fprintf(stderr, "Reading whole columns on %s: about %s rows in %d tables.\n",
-				sess.Database, report.Count(rows), tables)
+				report.Clean(sess.Database), report.Count(rows), tables)
 		},
 	}
 	interactive := isTerminal(os.Stderr)
 	if interactive {
 		opts.Progress = func(done, total int, table string, rows int64) {
-			if table == "" {
-				fmt.Fprint(stderr, "\r\x1b[K")
-				return
-			}
-			fmt.Fprintf(stderr, "\r\x1b[KReading %d/%d %s: %s rows", done+1, total, table, report.Count(rows))
+			fmt.Fprint(stderr, readingLine(done, total, table, rows))
 		}
 	}
 	res, err := leak.Compare(ctx, sess, file, key, opts)

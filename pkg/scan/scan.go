@@ -25,7 +25,7 @@ type Options struct {
 	SampleRows     int  // rows per table
 	MetaSampleRows int  // rows per key/value table too big to read whole
 	KeySampleRows  int  // rows per key of a key/value table
-	Samples        bool // false judges names only and reads no rows
+	Samples        bool // false samples no rows; the platform checks still read settings rows
 	// SampleKeysOnly reads every key/value table by sampling, as for tables
 	// too large to list their keys: a window of rows plus probes for the
 	// keys presets know.
@@ -225,6 +225,12 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 
 	detect.SortFindings(res.Findings)
 	sortRelationships(res.Relationships)
+	// Verify checked each link with its stored type value. From here on the
+	// result carries only what a report may show of it, so every writer,
+	// Pro's included, gets that.
+	for i, r := range res.Relationships {
+		res.Relationships[i].TypeValue = detect.ShowType(r.TypeValue)
+	}
 	summarize(res, time.Since(start))
 	return res, nil
 }

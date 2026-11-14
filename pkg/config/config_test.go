@@ -340,3 +340,36 @@ func TestWriteSuggestionsAndHiddenKeys(t *testing.T) {
 		t.Errorf("odd column name:\n%s", yml)
 	}
 }
+
+// TestWriteTypeValues checks that a relationship's where line shows a
+// polymorphic type value only when it reads as a class name: a URL that ends
+// in a table's name is written as (type hidden), with a comment that says so.
+func TestWriteTypeValues(t *testing.T) {
+	canary := "Qz8" + "typeCanary"
+	link := func(parent, typ string) model.Relationship {
+		return model.Relationship{ChildTable: "comments", ChildColumns: []string{"commentable_id"}, ParentTable: parent,
+			ParentColumns: []string{"id"}, Source: "polymorphic", Status: model.RelConfirmed, Checked: 3, Found: 3,
+			TypeColumn: "commentable_type", TypeValue: typ}
+	}
+	res := &model.Result{
+		Version: "test", Database: "shop", GeneratedAt: time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC),
+		Relationships: []model.Relationship{link("posts", `App\Models\Post`), link("users", "https://"+canary+".example/users")},
+	}
+	var b bytes.Buffer
+	if err := Write(&b, res); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if strings.Contains(out, canary) {
+		t.Errorf("the config shows the stored type value:\n%s", out)
+	}
+	// scalar quotes a value with spaces and doubles its backslashes.
+	for _, want := range []string{
+		"where: \"commentable_type = App\\\\Models\\\\Post\"\n",
+		"where: \"commentable_type = (type hidden)\"  # the stored value isn't shown, as it doesn't read as a class name\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("config is missing %q:\n%s", want, out)
+		}
+	}
+}

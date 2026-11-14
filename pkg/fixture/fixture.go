@@ -34,6 +34,11 @@ var (
 // Platforms lists the fixtures Build can make.
 var Platforms = []string{"wordpress", "magento2", "laravel", "generic"}
 
+// TypeMarker is in some of the Laravel fixture's polymorphic type values,
+// inside a URL that names a table at its end, which no report may show. It
+// isn't the canary, since a copy keeps type columns as they are.
+const TypeMarker = "zq7typemark5x"
+
 // Options for Build.
 type Options struct {
 	// Canary is placed inside several stored values. Reports must never

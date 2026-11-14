@@ -52,7 +52,7 @@ func Markdown(w io.Writer, res *model.Result) error {
 		}
 		pf("- **Platforms:** %s\n", strings.Join(ps, "; "))
 	}
-	sampling := "names only, no rows read"
+	sampling := namesOnly(res)
 	if res.Options.Samples {
 		sampling = fmt.Sprintf("%s rows sampled (up to %d per table, %d per key/value table)",
 			thousands(s.RowsSampled), res.Options.SampleRows, res.Options.MetaSampleRows)

@@ -123,7 +123,7 @@ func LeakJSON(w io.Writer, res *model.LeakResult) error {
 func LeakText(w io.Writer, res *model.LeakResult, colors bool) error {
 	b := bufio.NewWriter(w)
 	st := style{colors}
-	pf := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	pf := printer(b)
 	s := res.Summary
 
 	title := "prodmask leak-check"

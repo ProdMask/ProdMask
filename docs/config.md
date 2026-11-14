@@ -217,7 +217,7 @@ Pro evaluates conditions itself, on the rows as they are before anything is repl
 
 When later versions use the same grammar to select rows on the server, such as the root rows of a subset, the server's collation decides how text compares. This page will say so where it applies.
 
-The scan's `relationships:` and `neutralise:` entries also have a `where`, but it isn't this grammar: in `relationships:` it is the type column and value of a polymorphic link, and in `neutralise:` the table and setting to change.
+The scan's `relationships:` and `neutralise:` entries also have a `where`, but it isn't this grammar: in `relationships:` it is the type column and value of a polymorphic link, and in `neutralise:` the table and setting to change. The type value is sampled from the data, so it's written as stored only when it reads as a class name or a plain word; otherwise it's written as `(type hidden)`, which stands for the value and doesn't match it.
 
 ## source and target
 

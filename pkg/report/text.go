@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/ProdMask/ProdMask/pkg/model"
@@ -19,17 +20,22 @@ type TextOptions struct {
 
 type style struct{ on bool }
 
-func (s style) wrap(code, text string) string {
+// styled is text the report has put in its own colour codes, which the
+// report's writer leaves as it is. It cleans every other string it's given.
+type styled string
+
+func (s style) wrap(code, text string) styled {
+	text = Clean(text)
 	if !s.on {
-		return text
+		return styled(text)
 	}
-	return "\x1b[" + code + "m" + text + "\x1b[0m"
+	return styled("\x1b[" + code + "m" + text + "\x1b[0m")
 }
 
-func (s style) bold(t string) string { return s.wrap("1", t) }
-func (s style) dim(t string) string  { return s.wrap("2", t) }
+func (s style) bold(t string) styled { return s.wrap("1", t) }
+func (s style) dim(t string) styled  { return s.wrap("2", t) }
 
-func (s style) severity(sev model.Severity, text string) string {
+func (s style) severity(sev model.Severity, text string) styled {
 	switch sev {
 	case model.SeverityCritical:
 		return s.wrap("1;91", text)
@@ -40,7 +46,46 @@ func (s style) severity(sev model.Severity, text string) string {
 	case model.SeverityLow:
 		return s.wrap("36", text)
 	}
-	return text
+	return styled(Clean(text))
+}
+
+// Clean replaces each character in s that can steer a terminal, and each byte
+// that isn't UTF-8, with ?. Table, column and key names come from the
+// database, and one written to a terminal as stored could move the cursor,
+// hide a line or reorder one. The reports clean what they write, and a
+// command that writes a name to the terminal itself cleans it with this.
+func Clean(s string) string {
+	if utf8.ValidString(s) && !strings.ContainsFunc(s, steers) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if r == utf8.RuneError || steers(r) {
+			r = '?'
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// steers reports a control character, a format character such as a bidi
+// override, or a line or paragraph separator.
+func steers(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
+}
+
+// printer returns the terminal reports' writer, which cleans every string
+// argument, since those hold names from the database. The format is the
+// report's own, and so is styled text, which isn't a string.
+func printer(b *bufio.Writer) func(format string, a ...any) {
+	return func(format string, a ...any) {
+		for i, x := range a {
+			if s, ok := x.(string); ok {
+				a[i] = Clean(s)
+			}
+		}
+		fmt.Fprintf(b, format, a...)
+	}
 }
 
 func sevLabel(sev model.Severity) string { return fmt.Sprintf("%-8s", strings.ToUpper(sev.String())) }
@@ -84,7 +129,7 @@ func shortField(f model.Finding) string {
 func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 	b := bufio.NewWriter(w)
 	st := style{opts.Color}
-	pf := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	pf := printer(b)
 
 	title := "prodmask scan"
 	if res.Edition != "" {
@@ -106,7 +151,7 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 	if res.Options.Samples {
 		scanned += fmt.Sprintf(" · %s rows sampled", thousands(s.RowsSampled))
 	} else {
-		scanned += " · names only, no rows read"
+		scanned += " · " + namesOnly(res)
 	}
 	pf("%s · %s\n\n", scanned, seconds(s.DurationMillis))
 
@@ -159,17 +204,18 @@ func Text(w io.Writer, res *model.Result, opts TextOptions) error {
 			}
 			width = min(width, 48)
 			for _, f := range fs {
-				conf := f.Confidence.String()
-				line := fmt.Sprintf("    %s  %s  %s  %s",
-					st.severity(f.Severity, sevLabel(f.Severity)),
-					pad(cut(shortField(f), 48), width),
-					pad(cut(f.Category.Label(), 28), 28),
-					pad(conf, 6))
 				ev := evidence(f)
 				if !opts.Verbose {
 					ev = cut(ev, 70)
 				}
-				pf("%s  %s\n", line, st.dim(ev))
+				// The parts go to pf one by one, so it cleans the names and
+				// leaves the styled label as it is.
+				pf("    %s  %s  %s  %s  %s\n",
+					st.severity(f.Severity, sevLabel(f.Severity)),
+					pad(cut(shortField(f), 48), width),
+					pad(cut(f.Category.Label(), 28), 28),
+					pad(f.Confidence.String(), 6),
+					st.dim(ev))
 			}
 		}
 		pf("\n")
