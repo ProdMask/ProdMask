@@ -38,7 +38,7 @@ func TestScanNeverEchoesArguments(t *testing.T) {
 	for _, m := range regexp.MustCompile(`(?m)^  -([a-z-]+)`).FindAllStringSubmatch(help, -1) {
 		flags = append(flags, m[1])
 	}
-	if len(flags) < 13 || !slices.Contains(flags, "dsn") || !slices.Contains(flags, "no-color") {
+	if len(flags) < 14 || !slices.Contains(flags, "dsn") || !slices.Contains(flags, "project") || !slices.Contains(flags, "no-color") {
 		t.Fatalf("read %d flags from scan -h: %q", len(flags), flags)
 	}
 

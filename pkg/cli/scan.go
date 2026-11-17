@@ -12,10 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+
 	"github.com/ProdMask/ProdMask/pkg/config"
 	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/preset"
+	"github.com/ProdMask/ProdMask/pkg/projectdb"
 	"github.com/ProdMask/ProdMask/pkg/report"
 	"github.com/ProdMask/ProdMask/pkg/scan"
 )
@@ -33,6 +36,7 @@ func runScan(ctx context.Context, env *Env, args []string) int {
 	stdout, stderr := env.Stdout, env.Stderr
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	dsn := fs.String("dsn", "", "connection string, mysql://user@host:3306/db or user@tcp(host:3306)/db\n(default $PRODMASK_DSN; the password may come from $PRODMASK_PASSWORD)")
+	project := fs.String("project", "", "read the database settings from the app's config in this folder instead:\nwp-config.php, Laravel's .env or Magento's app/etc/env.php")
 	sampleRows := fs.Int("sample-rows", scan.DefaultSampleRows, "rows to sample per table")
 	metaRows := fs.Int("meta-sample-rows", scan.DefaultMetaSampleRows, "rows to sample from a key/value table such as wp_postmeta\nthat is too big to read whole")
 	noSamples := fs.Bool("no-samples", false, "judge column names only and sample no rows; the platform checks\nstill read settings rows, unless --preset none")
@@ -86,23 +90,72 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 		}
 	}
 
-	conn := *dsn
-	if conn == "" {
-		conn = os.Getenv("PRODMASK_DSN")
+	// A flag given empty, as by a script's unset variable, still counts as
+	// given.
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	var (
+		cfg  *mysql.Config
+		proj *projectdb.Project
+	)
+	if given["project"] {
+		switch {
+		case given["dsn"]:
+			return usageErr("give --dsn or --project, not both")
+		case *project == "":
+			return usageErr("--project is empty: give the app's folder")
+		}
+		proj, err = readProject(stderr, *project)
+		if err != nil {
+			return usageErr("%v", err)
+		}
+		cfg = proj.Config
+	} else {
+		conn := *dsn
+		if conn == "" {
+			conn = os.Getenv("PRODMASK_DSN")
+		}
+		cfg, err = dbconn.ParseDSN(conn, os.Getenv("PRODMASK_PASSWORD"))
+		if err != nil {
+			code := usageErr("%v", err)
+			if strings.TrimSpace(conn) == "" {
+				if hint := projectdb.Hint(os.Stat); hint != "" {
+					fmt.Fprintln(stderr, "prodmask scan: "+hint)
+				}
+			}
+			return code
+		}
 	}
-	cfg, err := dbconn.ParseDSN(conn, os.Getenv("PRODMASK_PASSWORD"))
-	if err != nil {
-		return usageErr("%v", err)
+	// A socket read from a project's config is named by a label, never by its
+	// path, which can hold a user's or the project's name; showErr keeps the
+	// path out of any error printed later too. With --project, the database
+	// and user names come from a file the user may not have written, so
+	// showErr cleans errors as the reports clean names from the database.
+	label, showErr := "", func(err error) string { return err.Error() }
+	if proj != nil {
+		if proj.Socket {
+			label = proj.Label()
+		}
+		showErr = func(err error) string {
+			s := err.Error()
+			if label != "" {
+				s = strings.ReplaceAll(s, cfg.Addr, label)
+			}
+			return report.Clean(s)
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
 	interactive := isTerminal(os.Stderr)
-	fmt.Fprintf(stderr, "Connecting to %s (read-only)...\n", dbconn.Describe(cfg))
-	sess, err := dbconn.Open(ctx, cfg, *timeout)
+	fmt.Fprintf(stderr, "Connecting to %s (read-only)...\n", report.Clean(dbconn.DescribeAs(cfg, label)))
+	sess, err := dbconn.OpenAs(ctx, cfg, *timeout, label)
 	if err != nil {
-		fmt.Fprintf(stderr, "prodmask: %v\n", err)
+		fmt.Fprintf(stderr, "prodmask: %s\n", showErr(err))
+		if proj != nil && proj.Localhost {
+			fmt.Fprintln(stderr, "prodmask: the app may reach localhost through a socket; pass --dsn with ?socket=/path instead")
+		}
 		return ExitError
 	}
 	defer sess.Close()
@@ -121,7 +174,7 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 		if interactive {
 			fmt.Fprintln(stderr)
 		}
-		fmt.Fprintf(stderr, "prodmask: %v\n", err)
+		fmt.Fprintf(stderr, "prodmask: %s\n", showErr(err))
 		return ExitError
 	}
 	// The reports name the build's edition; the starter config keeps the
@@ -164,6 +217,35 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 		return ExitFindings
 	}
 	return ExitOK
+}
+
+// readProject reads the database settings of the app in dir, for --project,
+// and says on stderr, in fixed words, what it read and what it ignored. Its
+// error is a fixed refusal that names neither dir nor anything from the file.
+func readProject(stderr io.Writer, dir string) (*projectdb.Project, error) {
+	for _, v := range []string{"PRODMASK_DSN", "PRODMASK_PASSWORD"} {
+		if os.Getenv(v) != "" {
+			fmt.Fprintf(stderr, "$%s isn't used with --project.\n", v)
+		}
+	}
+	p, err := projectdb.Read(dir)
+	if err != nil {
+		return nil, err
+	}
+	if p.ConfigCache {
+		fmt.Fprintln(stderr, "Laravel's config cache is on, so the app reads bootstrap/cache/config.php, not .env; "+
+			"check the database below, or pass --dsn")
+	}
+	if p.DropIn {
+		fmt.Fprintln(stderr, "WordPress loads wp-content/db.php, which can replace its database connection; "+
+			"check the database below, or pass --dsn")
+	}
+	fmt.Fprintf(stderr, "Reading the database settings from %s in the folder given to --project.\n", p.File)
+	if p.Localhost {
+		fmt.Fprintf(stderr, "%s names localhost, which PHP reaches through a socket; connecting over TCP to localhost:%d instead.\n",
+			p.File, p.Port())
+	}
+	return p, nil
 }
 
 // writeFile writes through a temporary file in the same folder, so a failed

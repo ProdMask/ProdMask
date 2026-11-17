@@ -110,8 +110,26 @@ PRODMASK_PASSWORD='…' prodmask scan --dsn 'mysql://prodmask_ro@db.internal:330
 
 The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/path/mysqld.sock` for a socket) or the Go driver form (`user:pass@tcp(host:3306)/db`). The `PRODMASK_DSN` environment variable works too. Keep the password in `PRODMASK_PASSWORD` rather than in the DSN, so it stays out of shell history.
 
+On a WordPress, Laravel or Magento install, `--project` reads the database settings from the app's own config instead:
+
+```bash
+prodmask scan --project /var/www/shop
+```
+
+- **What it reads:** `wp-config.php`, Laravel's `.env` (beside `artisan`) or Magento's `app/etc/env.php`, in that folder only. It never runs PHP and takes plain values only.
+- **What it refuses, by design:** settings that come from somewhere else, such as `getenv()`, Bedrock's `env()`, `${VAR}` in `.env`, or another file the config includes, as DDEV's WordPress setup does. Those keep `--dsn`.
+- **Laravel's URL keys:** a `config/database.php` from before Laravel 11 reads `DATABASE_URL`, and one from Laravel 11 on reads `DB_URL`. The scan reads a URL key only when the app would connect the same way with either: both keys set alike, or one beside separate `DB_*` keys that say the same. Otherwise it asks for `--dsn`.
+- **Precedence:** `--project` and `--dsn` don't mix. `--project` ignores `PRODMASK_DSN` and `PRODMASK_PASSWORD`, and says so.
+- **What it prints:** the config's file name and where it connects, never the folder, the password, a socket's path or anything else from the file.
+- **`localhost`:** PHP reaches it through a socket whose path the scan can't know, so the scan uses TCP to `localhost` and says so.
+- **Limits:** the scan reads the file as written. The app can still get other settings from a real environment variable, such as `APP_ENV` naming another `.env` file or Magento's `MAGENTO_DC_` variables; from its own code, such as a Laravel `config/database.php` that reads other keys; from Laravel's config cache; or from a WordPress database drop-in, `wp-content/db.php`. The scan warns about the cache, and about a `wp-content/db.php` in the folder given to `--project`, and always names the database it connects to, so check that line.
+- **TLS:** like a DSN without `?tls=true`, `--project` doesn't encrypt the connection. For an encrypted, verified connection, pass `--dsn` with `?tls=true`.
+
+With no DSN at all, the scan names a config it finds in the current folder.
+
 | Flag | Default | |
 |---|---|---|
+| `--project` | | read the database settings from the app's config in this folder, instead of `--dsn` |
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |

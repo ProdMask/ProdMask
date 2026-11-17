@@ -43,7 +43,15 @@ func (s *Session) Close() error { return s.DB.Close() }
 // Open connects, checks the server and the user's privileges, and prepares
 // the read-only session.
 func Open(ctx context.Context, cfg *mysql.Config, timeout time.Duration) (*Session, error) {
+	return OpenAs(ctx, cfg, timeout, "")
+}
+
+// OpenAs is Open for a target named by label instead of its address, as
+// DescribeAs renders it: its errors and Server.Address show the label, never
+// cfg's address, and the driver logs nothing. An empty label is Open.
+func OpenAs(ctx context.Context, cfg *mysql.Config, timeout time.Duration, label string) (*Session, error) {
 	cfg = cfg.Clone()
+	quiet(cfg, label)
 	// The scanner never needs these, whatever the DSN says.
 	cfg.MultiStatements = false
 	cfg.AllowAllFiles = false
@@ -66,7 +74,7 @@ func Open(ctx context.Context, cfg *mysql.Config, timeout time.Duration) (*Sessi
 	}
 
 	s := &Session{Database: cfg.DBName, Timeout: timeout}
-	params, err := s.probe(ctx, cfg)
+	params, err := s.probe(ctx, cfg, label)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +112,7 @@ func openPool(cfg *mysql.Config) (*sql.DB, error) {
 // probe opens a throwaway connection to learn the server flavour, which
 // session variables exist, and what the user may do. It returns the session
 // variables every scan connection should set on connect.
-func (s *Session) probe(ctx context.Context, cfg *mysql.Config) (map[string]string, error) {
+func (s *Session) probe(ctx context.Context, cfg *mysql.Config, label string) (map[string]string, error) {
 	db, err := openPool(cfg)
 	if err != nil {
 		return nil, err
@@ -112,7 +120,7 @@ func (s *Session) probe(ctx context.Context, cfg *mysql.Config) (map[string]stri
 	defer db.Close()
 	conn, err := db.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("connect to %s: %w", Describe(cfg), err)
+		return nil, connectError(cfg, label, err)
 	}
 	defer conn.Close()
 
@@ -124,7 +132,8 @@ func (s *Session) probe(ctx context.Context, cfg *mysql.Config) (map[string]stri
 	if strings.Contains(strings.ToLower(version+" "+comment), "mariadb") {
 		flavor = "mariadb"
 	}
-	s.Server = model.ServerInfo{Flavor: flavor, Version: version, Address: Address(cfg), User: cfg.User}
+	_, address := target(cfg, label)
+	s.Server = model.ServerInfo{Flavor: flavor, Version: version, Address: address, User: cfg.User}
 
 	params := map[string]string{"autocommit": "1", "lock_wait_timeout": "5"}
 	switch {
