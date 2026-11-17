@@ -9,7 +9,7 @@ Find out what a plain copy of your production MySQL or MariaDB database would ca
 
 ![A terminal recording of prodmask scan on the fake shop: the summary, what staging could do to real people, and the findings by table](https://raw.githubusercontent.com/ProdMask/ProdMask/main/docs/demo.gif)
 
-`prodmask scan` connects read-only and samples a few hundred rows per table. It reports:
+`prodmask scan` connects read-only and samples a few hundred rows per table. Besides the fixed statements its database driver sends as it connects, every statement it sends is checked to be a read before it reaches the server. It reports:
 
 - **Personal data and secrets:**
   - emails, phone numbers, addresses, names, dates of birth, national and tax IDs, device and hardware IDs, push notification tokens;
@@ -108,7 +108,7 @@ docker run --rm --network host -e PRODMASK_PASSWORD --user "$(id -u):$(id -g)" -
 PRODMASK_PASSWORD='…' prodmask scan --dsn 'mysql://prodmask_ro@db.internal:3306/shop'
 ```
 
-The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/path/mysqld.sock` for a socket) or the Go driver form (`user:pass@tcp(host:3306)/db`). The `PRODMASK_DSN` environment variable works too. Keep the password in `PRODMASK_PASSWORD` rather than in the DSN, so it stays out of shell history.
+The DSN can be a URL (`mysql://user:pass@host:port/db?tls=true`, or `?socket=/path/mysqld.sock` for a socket) or the Go driver form (`user:pass@tcp(host:3306)/db`). The `PRODMASK_DSN` environment variable works too. Keep the password in `PRODMASK_PASSWORD` rather than in the DSN, so it stays out of shell history. Session variables in a DSN are ignored, and a warning names them, or only counts any whose names aren't plain words; the connection always uses utf8mb4.
 
 On a WordPress, Laravel or Magento install, `--project` reads the database settings from the app's own config instead:
 
@@ -231,6 +231,7 @@ A zero isn't proof that none are there. Only a sample is looked for, and only ki
 - **Session settings:**
   - one connection with a read-only session (`transaction_read_only`) in autocommit mode, so no snapshot or lock outlives a statement;
   - `lock_wait_timeout` of 5 seconds, so it never queues behind a schema change;
+  - `sql_big_selects` on, so a low `max_join_size` on the server doesn't refuse its reads;
   - a server-side statement timeout (`max_statement_time` on MariaDB, `max_execution_time` on MySQL).
 - **Queries:**
   - every sampling query is a `SELECT` with a `LIMIT`, ordered by primary key where there is one; key/value lookups (below) have a `LIMIT` per key instead;

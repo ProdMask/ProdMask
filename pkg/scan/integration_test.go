@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -119,9 +120,12 @@ func TestFixtures(t *testing.T) {
 			}
 			sess := openScan(ctx, t, adminCfg, database)
 
-			if _, err := sess.DB.ExecContext(ctx, writes[platform]); err == nil {
-				t.Fatal("the scan session accepted a write")
+			// The read-only rules stop the write before the read-only
+			// session can; the session's own guard has a test in dbconn.
+			if _, err := sess.DB.ExecContext(ctx, writes[platform]); !errors.Is(err, dbconn.ErrStatementRefused) {
+				t.Fatalf("the scan session's write got %v, want a refusal", err)
 			}
+			onPurpose.Add(1)
 			if check := moreChecks[platform]; check != nil {
 				check(ctx, t, sess)
 			}

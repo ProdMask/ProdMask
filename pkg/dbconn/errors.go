@@ -19,12 +19,16 @@ const (
 
 // ErrorText describes a failed statement without quoting the server's
 // message, which can repeat bound arguments or bytes from a row. Reports and
-// warnings use it for every statement that reads keys or values.
+// warnings use it for every statement that reads keys or values. A
+// statement the read-only rules stopped gets their own words, so a warning
+// shows it as the fault it is.
 func ErrorText(err error) string {
 	var my *mysql.MySQLError
 	switch {
 	case err == nil:
 		return ""
+	case errors.Is(err, ErrStatementRefused):
+		return ErrStatementRefused.Error()
 	case IsTimeout(err):
 		return "timed out"
 	case errors.Is(err, context.Canceled):

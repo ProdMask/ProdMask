@@ -2,6 +2,10 @@
 
 These are the changes that can change a build's result: findings that appear, go away or change severity. A `--fail-on` gate that passed may fail after an upgrade, or the other way round. Each release's notes on GitHub have the rest.
 
+## v0.14.0
+
+A DSN that named a charset other than utf8mb4 is now read as utf8mb4, so values that charset couldn't hold are judged as they're stored, and findings in them can appear. Session variables in a DSN, such as `?sql_mode=…`, are now ignored, with a warning, so findings that depended on one can change. On a server with a low `max_join_size`, reads it used to refuse now run, since the session turns `sql_big_selects` on, and findings in them can appear.
+
 ## v0.12.0
 
 Adds critical findings for passwords in Go driver DSNs with no scheme, such as `app:…@tcp(db:3306)/shop`, in URLs whose scheme has capitals or an underscore, such as `MYSQL://` or `pdo_mysql://`, or whose user is over 64 characters, and for passwords that hold a `/`, `?`, `#` or `'`, as in `mysql://app:…/…@db/shop`. A password of one character repeated no longer counts past ASCII either, such as `…`, and neither does a password whose `tcp(…)` address is at a host reserved for examples, as in `mysql://app:…@tcp(db.example.com:3306)/shop`.

@@ -42,12 +42,16 @@ var ErrNotRepeatableRead = errors.New("the session did not take REPEATABLE READ,
 // waits for metadata locks are bounded. The connection may idle for as long
 // as the server allows (wait_timeout at its maximum).
 //
-// Only statements that keep the snapshot run: ExecContext takes SETs of
-// session variables, and the query methods take reads (SELECT, SHOW,
-// DESCRIBE, EXPLAIN, VALUES, TABLE, and WITH ... SELECT). INTO, locking
-// reads and executable comments are refused anywhere. A refused statement
-// returns ErrStatementRefused without running, and the snapshot stays. The
-// rules don't vet functions, so callers must not call ones that write.
+// Only statements that keep the snapshot run, by the read-only rules a
+// scan's Session applies too: ExecContext takes SETs of session variables,
+// and the query methods take reads (SELECT, SHOW, DESCRIBE, EXPLAIN,
+// VALUES, TABLE, and WITH ... SELECT). INTO, locking reads, executable
+// comments and calls that change a sequence are refused anywhere, control
+// characters outside strings and quoted names, and character set changes
+// in a SET, but for SET NAMES utf8mb4, utf8mb3, utf8 or binary. A refused
+// statement returns ErrStatementRefused without running, and the snapshot
+// stays. The rules don't vet other functions, so callers must not call ones
+// that write.
 type Snapshot struct {
 	Server   model.ServerInfo
 	Database string

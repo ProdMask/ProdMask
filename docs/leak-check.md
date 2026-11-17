@@ -121,7 +121,7 @@ From 10 matches up, on a spread sample, the report estimates the total: "1,860 o
 
 ## What it does to your databases
 
-Both steps use the same read-only session as `prodmask scan`: one connection, read-only, in autocommit mode, with a server-side time limit on every statement. One statement runs at a time, and no snapshot or lock outlives a statement.
+Both steps use the same read-only session as `prodmask scan`: one connection, read-only, in autocommit mode, with a server-side time limit on every statement, and with `sql_big_selects` on, so a low `max_join_size` on the server doesn't refuse a whole column's read. One statement runs at a time, and no snapshot or lock outlives a statement. Besides the fixed statements its database driver sends as it connects, every statement either step sends is checked to be a read before it reaches the server.
 
 **On production,** `hash` runs a normal scan, then samples what it flagged:
 - a plain table takes 3,000 one-row reads by primary key, in 60 statements;

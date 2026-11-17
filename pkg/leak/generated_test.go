@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ProdMask/ProdMask/pkg/dbconn"
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/report"
 	"github.com/ProdMask/ProdMask/pkg/sample"
@@ -661,9 +663,10 @@ func TestSelectOnlyUser(t *testing.T) {
 	if err := sess.DB.QueryRowContext(ctx, "SELECT @@SESSION.transaction_read_only").Scan(&only); err == nil && only != "1" {
 		t.Errorf("transaction_read_only is %s", only)
 	}
-	if _, err := sess.DB.ExecContext(ctx, "UPDATE customers SET phone = NULL WHERE id = 1"); err == nil {
-		t.Error("a write went through")
+	if _, err := sess.DB.ExecContext(ctx, "UPDATE customers SET phone = NULL WHERE id = 1"); !errors.Is(err, dbconn.ErrStatementRefused) {
+		t.Errorf("a write got %v, want a refusal", err)
 	}
+	onPurpose.Add(1)
 	f, _, err := Hash(ctx, sess, key, HashOptions{Preset: "auto", Version: "test"})
 	if err != nil {
 		t.Fatal(err)
