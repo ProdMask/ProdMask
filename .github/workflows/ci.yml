@@ -17,38 +17,9 @@ env:
   PM_CI_RELEASE: v0.12.1
 
 jobs:
+  # The server tests on MariaDB and MySQL, as release.yml runs them: test.yml.
   test:
-    name: test (${{ matrix.db }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        db: ["mariadb:11.8", "mysql:8.4"]
-    services:
-      db:
-        image: ${{ matrix.db }}
-        env:
-          MARIADB_ROOT_PASSWORD: ci-only-root
-          MYSQL_ROOT_PASSWORD: ci-only-root
-        ports: ["3306:3306"]
-        options: >-
-          --health-cmd="mariadb-admin ping -h 127.0.0.1 -pci-only-root || mysqladmin ping -h 127.0.0.1 -pci-only-root"
-          --health-interval=5s --health-timeout=5s --health-retries=30
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-      - name: Format
-        run: test -z "$(gofmt -l .)"
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: go test -count=1 ./...
-        env:
-          PRODMASK_TEST_DSN: root:ci-only-root@tcp(127.0.0.1:3306)/
+    uses: ./.github/workflows/test.yml
 
   # Builds every release target and both images without publishing, so a
   # broken release config, a platform-specific build error or a broken image

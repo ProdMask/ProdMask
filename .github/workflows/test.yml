@@ -1,0 +1,81 @@
+name: test
+
+# The server tests, on MariaDB 11.8 and MySQL 8.4. ci.yml runs this for pushes
+# to main and ci/ branches and for pull requests, release.yml runs it before
+# every release, and it can be started by hand from the Actions tab.
+#
+# With PRODMASK_TEST_REQUIRE_ALL set, a server test with no PRODMASK_TEST_DSN
+# fails instead of skipping. internal/testdb reads both, and
+# TestOnlyDSNReadsTheVariable keeps the server tests on it, though that test
+# is a tripwire, not a proof. If this job's env: were lost, every server test
+# would skip and pass. So a step checks that pkg/scan's TestFixtures, which
+# needs a server, passed. A failing test's own lines are in the last step, by
+# package.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        db: ["mariadb:11.8", "mysql:8.4"]
+    services:
+      db:
+        image: ${{ matrix.db }}
+        env:
+          MARIADB_ROOT_PASSWORD: ci-only-root
+          MYSQL_ROOT_PASSWORD: ci-only-root
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -pci-only-root || mysqladmin ping -h 127.0.0.1 -pci-only-root"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      PRODMASK_TEST_DSN: root:ci-only-root@tcp(127.0.0.1:3306)/
+      PRODMASK_TEST_REQUIRE_ALL: "1"
+    # bash here means bash -eo pipefail, so the Test step's pipeline fails
+    # when go test does, not only when jq does.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      # go test -json writes one event per line. tee keeps them all for the
+      # steps below, and jq shows each package's own lines as it finishes, as
+      # plain go test would. jq's output is a pipe here, so --unbuffered.
+      - name: Test
+        run: |
+          go test -count=1 -json ./... |
+            tee "$RUNNER_TEMP/test.json" |
+            jq --unbuffered -R -j 'fromjson? | select(.Test == null) | .Output // empty'
+      - name: Check that a named server test ran
+        run: |
+          if jq -R -n -e '[inputs | fromjson?] | any(.[]; .Package == "github.com/ProdMask/ProdMask/pkg/scan" and .Test == "TestFixtures" and .Action == "pass")' "$RUNNER_TEMP/test.json" >/dev/null; then
+            exit 0
+          fi
+          echo "::error::pkg/scan's TestFixtures didn't pass, so the server tests may all have skipped. Check this job's env: block. If the test was renamed, rename it in this step too."
+          exit 1
+      # Parallel packages' lines interleave in go test's stream, so this prints
+      # them one package at a time.
+      - name: Show every test's output, by package
+        if: failure() || cancelled()
+        run: |
+          if [ -s "$RUNNER_TEMP/test.json" ]; then
+            jq -R -n -j '[inputs | fromjson? // {Output: "\(.)\n"}] | group_by(.Package // .ImportPath) | .[][] | .Output // empty' "$RUNNER_TEMP/test.json"
+          fi

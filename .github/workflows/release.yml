@@ -1,10 +1,11 @@
 name: release
 
-# Pushing a tag such as v0.1.0 tests the code, builds prodmask for Linux,
-# macOS and Windows (amd64 and arm64), publishes the archives with a
-# checksums.txt to GitHub Releases, and pushes the image
-# ghcr.io/prodmask/prodmask. check-image then runs the new image on both
-# processors.
+# Pushing a tag such as v0.1.0 first runs the server tests, on MariaDB and
+# MySQL (test.yml). Only once they pass does the release job test the code
+# again with the Go it builds with, build prodmask for Linux, macOS and
+# Windows (amd64 and arm64), publish the archives with a checksums.txt to
+# GitHub Releases, and push the image ghcr.io/prodmask/prodmask. check-image
+# then runs the new image on both processors.
 on:
   push:
     tags: ["v*"]
@@ -13,7 +14,15 @@ on:
 permissions: {}
 
 jobs:
+  # The release waits for these. This job grants the token test.yml needs,
+  # since this file's permissions: {} grants none.
+  test:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write # the GitHub release
@@ -33,6 +42,8 @@ jobs:
           check-latest: true
       - name: Vet
         run: go vet ./...
+      # No database here, so the server tests skip: they ran in the test job.
+      # This is the plain run on the tagged commit, with the release's Go.
       - name: Test
         run: go test -count=1 ./...
       - name: Log in to GHCR
