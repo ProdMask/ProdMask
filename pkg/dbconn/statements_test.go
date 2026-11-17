@@ -10,8 +10,14 @@ func TestStatementRules(t *testing.T) {
 	sets := []string{
 		"SET NAMES binary",
 		"SET NAMES utf8mb4 COLLATE utf8mb4_bin",
-		"SET CHARACTER SET utf8mb4",
+		"SET NAMES utf8mb3",
+		"set names utf8 collate 'utf8_general_ci'",
 		"SET SESSION sql_mode = ''",
+		// Pro's copy and plan set these up on their sessions.
+		"SET SESSION sql_quote_show_create = 1",
+		"SET SESSION max_statement_time = 30",
+		"SET SESSION max_execution_time = 30000",
+		"SET @x = 1\t,\r\n@y = 2",
 		"SET sql_quote_show_create = 1, @@session.time_zone = '+00:00'",
 		"SET LOCAL lock_wait_timeout = 5",
 		"SET @@lock_wait_timeout := 5",
@@ -50,6 +56,19 @@ func TestStatementRules(t *testing.T) {
 		"SELECT 'it''s' FROM t",
 		"SELECT GET_LOCK(?, 0)",
 		"SELECT 1;",
+		// Character sets in a read are untouched.
+		"SELECT CONVERT(? USING utf8mb4)",
+		"SELECT CAST(? AS CHAR CHARACTER SET utf8mb4)",
+		// A sequence is only read.
+		"SELECT nextval, setval FROM t",
+		"SELECT PREVIOUS VALUE FOR s",
+		"SELECT LASTVAL(s)",
+		"SELECT * FROM `next value for`",
+		// A control character inside a string or quoted name, as a scanned
+		// table's name can hold.
+		"SELECT `a\x01b\x7f` FROM t",
+		"SELECT 'a\x00\x1b\x7f' FROM t",
+		"SELECT\t1\r\n",
 	}
 	for _, q := range reads {
 		if err := checkStatement(q, false); err != nil {
@@ -101,6 +120,29 @@ func TestStatementRules(t *testing.T) {
 		"",
 		"   ",
 		"-- nothing",
+		// The server reads -- and DEL as the start of a comment, so these
+		// hid what it runs from the rules.
+		"SET @x = 1 --\x7f'\n, transaction_read_only = 0 #'",
+		"SET @x = 1 --\x7f'\n, autocommit = 0 #'",
+		"SET @x = 1 --\x7f'\n, GLOBAL init_connect = 0x44454C455445 #'",
+		"SET @x = 1\x0b",
+		// Character sets the rules don't read as the server would.
+		"SET CHARACTER SET utf8mb4",
+		"SET CHARSET utf8mb4",
+		"SET NAMES latin1",
+		"SET NAMES gbk",
+		"SET NAMES 'utf8mb4'",
+		"SET NAMES `utf8mb4`",
+		"SET NAMES DEFAULT",
+		"SET NAMES",
+		"SET NAMES utf8mb4 COLLATE",
+		"SET NAMES utf8mb4 latin1",
+		"SET character_set_client = utf8mb4",
+		"SET @@session.character_set_client = latin1",
+		"SET SESSION character_set_connection = latin1",
+		"SET collation_connection = latin1_swedish_ci",
+		"SET @@session.collation_connection = utf8mb4_bin",
+		"SET sql_mode = '', NAMES latin1",
 	}
 	for _, q := range refusedSets {
 		if err := checkStatement(q, true); !errors.Is(err, ErrStatementRefused) {
@@ -156,11 +198,59 @@ func TestStatementRules(t *testing.T) {
 		"EXPLAIN",
 		"(UPDATE t SET a = 1)",
 		"",
+		// A quoted name is not a keyword.
+		"`SELECT` 1",
+		"`WITH` c AS (SELECT 1) SELECT 1",
+		"\"DESC\" t",
+		"`EXPLAIN` t",
+		"`DESCRIBE` SELECT 1",
+		// The server reads -- and DEL as the start of a comment.
+		"SELECT 1 --\x7f'\n INTO OUTFILE '/tmp/x' #'",
+		"SELECT * FROM t --\x7f'\n FOR UPDATE #'",
+		// Other control characters, comments included.
+		"SELECT 1\x00",
+		"SELECT\x0c1",
+		"SELECT 1 # \x01",
+		"SELECT 1 -- \x1b[2J",
+		"SELECT 1 /* \x7f */",
+		// Calls that change a sequence, in every form MariaDB reads.
+		"SELECT NEXTVAL(s)",
+		"select nextval (s)",
+		"SELECT NEXTVAL /* x */ (s)",
+		"SELECT SETVAL(s, 5)",
+		"SELECT `nextval`(s)",
+		"SELECT NEXT VALUE FOR s",
+		"SELECT next value for s",
+		"SELECT s.nextval",
+		"SELECT s . NEXTVAL",
+		"SELECT s.`nextval`",
+		"SELECT s.\"nextval\"",
+		"SELECT s.setval",
+		"SELECT `shop`.`s`.`NextVal` FROM t",
+		"SELECT 1 FROM t WHERE id = s.nextval",
 	}
 	for _, q := range refusedReads {
 		if err := checkStatement(q, false); !errors.Is(err, ErrStatementRefused) {
 			t.Errorf("a query %q not refused: %v", q, err)
 		}
+	}
+}
+
+// TestQuotedNames checks that a quoted name keeps its text, upper-cased,
+// with a doubled quote read as one, and that a string's text is dropped.
+func TestQuotedNames(t *testing.T) {
+	toks, err := statementTokens("SELECT `a``b`, \"c\"\"d\", 'e''f'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, tk := range toks {
+		if tk.kind == tokQuoted {
+			got = append(got, tk.text)
+		}
+	}
+	if want := []string{"A`B", "C\"D", ""}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("quoted tokens %q, want %q", got, want)
 	}
 }
 
@@ -173,6 +263,9 @@ func TestStatementRefusalsQuoteNothing(t *testing.T) {
 		"SELECT '" + canary + "' INTO @x",
 		"SET GLOBAL " + canary + " = 1",
 		"SELECT /*! " + canary + " */ 1",
+		"SELECT NEXTVAL(" + canary + ")",
+		"SET NAMES " + canary,
+		"SELECT 1 # " + canary + "\x7f",
 	} {
 		for _, exec := range []bool{true, false} {
 			if err := checkStatement(q, exec); err == nil || strings.Contains(err.Error(), canary) {
