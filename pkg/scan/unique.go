@@ -24,11 +24,12 @@ const (
 // are left alone, as are the parts of an index on an expression and
 // generated columns, whose values the server computes.
 func hashUnique(t *model.Table, findings []model.Finding) {
-	unique := uniqueColumns(t)
+	widths := uniqueWidths(t)
 	for i := range findings {
 		f := &findings[i]
 		c := t.Column(f.Column)
-		if f.Path != "" || f.KeyName || c == nil || !unique[c] || !takesHash(c) {
+		_, unique := widths[c]
+		if f.Path != "" || f.KeyName || c == nil || !unique || !takesHash(c) {
 			continue
 		}
 		if note := clearingNote(c, f.Mask); note != "" {
@@ -43,29 +44,6 @@ func hashUnique(t *model.Table, findings []model.Finding) {
 	}
 }
 
-// uniqueColumns are the columns of a table's primary key and unique
-// indexes, but no generated column; an index part on an expression names
-// none.
-func uniqueColumns(t *model.Table) map[*model.Column]bool {
-	out := map[*model.Column]bool{}
-	add := func(name string) {
-		if c := t.Column(name); name != "" && c != nil && !generated(c) {
-			out[c] = true
-		}
-	}
-	for _, name := range t.PrimaryKey {
-		add(name)
-	}
-	for _, ix := range t.Indexes {
-		if ix.Unique {
-			for _, name := range ix.Columns {
-				add(name)
-			}
-		}
-	}
-	return out
-}
-
 // generated reports a column whose values the server computes.
 func generated(c *model.Column) bool {
 	extra := strings.ToUpper(c.Extra)
@@ -76,8 +54,16 @@ func generated(c *model.Column) bool {
 // TEXT types, but not JSON, and bytes, BINARY, VARBINARY and the BLOBs.
 func takesHash(c *model.Column) bool {
 	switch c.DataType {
-	case "char", "varchar", "tinytext", "text", "mediumtext", "longtext",
-		"binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob":
+	case "char", "varchar", "tinytext", "text", "mediumtext", "longtext":
+		return true
+	}
+	return binary(c)
+}
+
+// binary reports a column of bytes, whose width counts bytes.
+func binary(c *model.Column) bool {
+	switch c.DataType {
+	case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob":
 		return true
 	}
 	return false

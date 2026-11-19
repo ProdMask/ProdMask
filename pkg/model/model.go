@@ -174,6 +174,10 @@ type Finding struct {
 	RowMasks   []RowMask  `json:"suggested_row_masks,omitempty"`
 	Source     string     `json:"source"`
 	Note       string     `json:"note,omitempty"`
+	// ProChooses marks a finding on a unique column so short that no rule
+	// keeps its values apart: the starter config writes its line commented
+	// out, and prodmask Pro chooses the rule. It isn't in the JSON report.
+	ProChooses bool `json:"-"`
 }
 
 // RowMask suggests a different mask for some rows of a column, such as the

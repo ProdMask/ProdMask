@@ -28,8 +28,17 @@ var Strategies = []string{
 type rule struct {
 	mask    string
 	comment string
-	low     bool // only low-confidence evidence: written commented out
+	// low rules are written commented out: those with only low-confidence
+	// evidence, and those on a short unique column whose rule prodmask Pro
+	// chooses.
+	low bool
 }
+
+// leaveToPro ends the comment on the line of a short unique column, which
+// the starter writes commented out, since no fake or hash keeps its values
+// apart and uncommenting the line would stop prodmask Pro's plan at it.
+const leaveToPro = "prodmask Pro chooses the rule here: no rule this short keeps a unique column apart, " +
+	"so Pro picks one and the copy keeps it unique; leave this line commented"
 
 type field struct {
 	rule  *rule
@@ -150,7 +159,9 @@ func Write(w io.Writer, res *model.Result) error {
 	sort.Strings(keys)
 	for _, k := range keys {
 		f := best[k]
-		r := &rule{mask: f.Mask, low: f.Confidence == model.ConfidenceLow}
+		// A short unique column's line is written commented out too: no rule
+		// keeps its values apart, so prodmask Pro chooses one.
+		r := &rule{mask: f.Mask, low: f.Confidence == model.ConfidenceLow || f.ProChooses}
 		r.comment = f.Category.Label() + ", " + f.Confidence.String() + " confidence"
 		if f.KeyName {
 			r.comment = f.Category.Label() + " in the key name, " + f.Confidence.String() + " confidence"
@@ -163,6 +174,9 @@ func Write(w io.Writer, res *model.Result) error {
 		}
 		if f.Note != "" {
 			r.comment += "; " + f.Note
+		}
+		if f.ProChooses {
+			r.comment += "; " + leaveToPro
 		}
 		t := get(f.Table)
 		var fd *field
@@ -385,7 +399,7 @@ func writeFields(b *bufio.Writer, indent string, fields map[string]*field) {
 		weakRows := !slices.ContainsFunc(fd.rows, func(rr rowRule) bool { return !rr.rule.low })
 		name := indent
 		if len(fd.paths) == 0 && (fd.rule == nil || fd.rule.low) && (fd.name == nil || fd.name.low) && weakRows {
-			name += "# " // nothing confident inside, so no live key either
+			name += "# " // nothing live inside, so no live key either
 		}
 		fmt.Fprintf(b, "%s%s:\n", name, scalar(n))
 		if fd.name != nil {
@@ -408,7 +422,7 @@ func writeFields(b *bufio.Writer, indent string, fields map[string]*field) {
 		if len(fd.rows) > 0 {
 			header := indent + "  "
 			if weakRows {
-				header += "# " // all weak: don't leave an empty rows: key behind
+				header += "# " // all commented out: don't leave an empty rows: key behind
 			}
 			note := "for the rows that match, these replace the mask above"
 			if fd.rule == nil {

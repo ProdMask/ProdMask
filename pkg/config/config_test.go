@@ -107,6 +107,59 @@ func TestWriteFakeNumber(t *testing.T) {
 	}
 }
 
+// TestWriteProChooses checks the lines of a short unique column whose rule
+// prodmask Pro chooses: written commented out, its row rules too, with a
+// comment that ends by saying to leave it so, after every note the scan
+// added. Those words are the starter config's: the findings don't carry
+// them. Rules the scan rewrote to hash because a fake couldn't fit, or kept
+// too few values apart, stay live, with their notes.
+func TestWriteProChooses(t *testing.T) {
+	const leave = "prodmask Pro chooses the rule here: no rule this short keeps a unique column apart, " +
+		"so Pro picks one and the copy keeps it unique; leave this line commented"
+	const noFit = "hash, not fake_city, since the column holds 2 characters and fake_city needs 4"
+	const tooFew = "hash, not fake_city, since this unique column needs more different values than fake_city makes"
+	const noEmail = "hash, not fake_email, since the column holds 1 character and fake_email needs 13"
+	const noPostcode = "hash, not fake_postcode, since the column holds 2 characters and fake_postcode needs 3"
+	// The note the scan adds last, after the starter's fit pass, to a device
+	// ID a relationship joins to another table's key.
+	const reference = "a relationship joins this column to devices.id: it's likely a reference; " +
+		"if devices.id holds the device IDs themselves, mask both the same way"
+	city := func(table, column, mask, note string, pro bool, rows ...model.RowMask) model.Finding {
+		return model.Finding{Table: table, Column: column, Category: model.CatCity, Severity: model.SeverityMedium,
+			Confidence: model.ConfidenceHigh, Mask: mask, Note: note, ProChooses: pro, RowMasks: rows}
+	}
+	res := &model.Result{Version: "test", Database: "shop", GeneratedAt: time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC),
+		Findings: []model.Finding{
+			city("codes", "code", "hash", noFit, true),
+			city("towns", "short_code", "keep", "", true, model.RowMask{Where: "kind = 'b'", Mask: "hash", Note: noPostcode}),
+			city("towns", "town_name", "hash", tooFew, false),
+			city("rules", "rule_email", "hash", noEmail, false),
+			{Table: "pushes", Column: "device", Category: model.CatDeviceID, Severity: model.SeverityLow,
+				Confidence: model.ConfidenceLow, Mask: "hash", Note: reference, ProChooses: true},
+		}}
+	var b bytes.Buffer
+	if err := Write(&b, res); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	checkTables(t, out)
+	for _, want := range []string{
+		"  codes:\n    columns:\n      # code: hash  # city, high confidence; " + noFit + "; " + leave + "\n",
+		"      # short_code:\n" +
+			"        # mask: keep  # city, high confidence; " + leave + "\n" +
+			"        # rows:  # for the rows that match, these replace the mask above\n" +
+			"          # - where: \"kind = 'b'\"\n" +
+			"          #   mask: hash  # " + noPostcode + "\n",
+		"\n      town_name: hash  # city, high confidence; " + tooFew + "\n",
+		"\n      rule_email: hash  # city, high confidence; " + noEmail + "\n",
+		"  pushes:\n    columns:\n      # device: hash  # device or hardware ID, low confidence; " + reference + "; " + leave + "\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("config is missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestWriteRowMasks(t *testing.T) {
 	orders := model.RowMask{Where: "post_type IN ('shop_order', 'shop_order_refund')", Mask: "null", Note: "order keys"}
 	res := &model.Result{

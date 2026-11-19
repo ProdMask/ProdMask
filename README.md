@@ -286,13 +286,14 @@ What doesn't count stays out of the report, though it may be a working credentia
 
 - a strategy per column, meta key or JSON path (`fake_email`, `fake_phone`, `hash`, `null`, …), with a different one for some rows where a platform needs it, such as the WooCommerce orders among WordPress posts;
 - `hash` instead of `null` or `empty` in a column with a unique index, where those would give every row the same value, with a comment that says why;
+- `hash` instead of a fake that can't fit its column, or that has too few different values for a unique one, with a comment that says why;
 - one rule per family of keys, written as a pattern such as `"um_cache_userdata_*": delete`, where `*` stands for the part that varies. Caches the platform rebuilds get `delete`.
 - a `name:` rule beside `mask:` when the key names themselves hold personal data;
 - tables to empty;
 - the inferred relationships;
 - the settings to neutralise.
 
-Weak matches appear commented out, and so do suggestions such as emptying a table that looks like a cache. Keys shown as `(key hidden)` get no rule, since no rule could name them without printing them; a comment says what they hold. The file's header explains patterns and paths, and [docs/config.md](docs/config.md) describes every section, including the ones prodmask Pro reads. Review every line: the config is a starting point, not a guarantee.
+Weak matches appear commented out, and so do suggestions such as emptying a table that looks like a cache. So does the rule for a unique column of 3 characters or fewer where a `hash` or a fake can't keep the values apart: prodmask Pro chooses that rule, so leave the line commented. Keys shown as `(key hidden)` get no rule, since no rule could name them without printing them; a comment says what they hold. The file's header explains patterns and paths, and [docs/config.md](docs/config.md) describes every section, including the ones prodmask Pro reads. Review every line: the config is a starting point, not a guarantee.
 
 ## Development
 

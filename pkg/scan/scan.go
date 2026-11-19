@@ -201,6 +201,7 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 			res.Warnings = append(res.Warnings, warns...)
 		}
 		hashUnique(t, findings)
+		fitFakes(t, findings)
 		for _, f := range findings {
 			if f.Confidence > model.ConfidenceLow {
 				ts.Findings++
