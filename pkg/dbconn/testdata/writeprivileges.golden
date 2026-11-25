@@ -1,0 +1,19 @@
+select-only: 
+all-on-database: ALL PRIVILEGES
+all-on-other-database: 
+table-level: INSERT
+mysql-root: ALTER, ALTER ROUTINE, CREATE, CREATE ROUTINE, CREATE VIEW, DELETE, DROP, EVENT, INDEX, INSERT, TRIGGER, UPDATE
+mysql-dynamic-only: 
+mysql-active-role-merged: INSERT, UPDATE
+mysql-role-not-active: 
+mysql-partial-revoke: INSERT
+mariadb-root: ALL PRIVILEGES
+mariadb-role-lines: INSERT, UPDATE
+mariadb-nested-role: DELETE
+mariadb-public-on-test: ALTER, CREATE, CREATE ROUTINE, CREATE VIEW, DELETE, DELETE HISTORY, DROP, EVENT, INDEX, INSERT, TRIGGER, UPDATE
+mariadb-public-elsewhere: 
+mariadb-password: 
+mariadb-space-spelled: 
+columns-wildcards-routines: UPDATE
+escaped-wildcard-elsewhere: 
+wildcard-matches: INSERT

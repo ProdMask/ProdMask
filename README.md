@@ -224,6 +224,16 @@ The first step samples the columns `scan` flags on production and writes keyed h
 
 A zero isn't proof that none are there. Only a sample is looked for, and only kinds unlikely to match by chance: email addresses, phone numbers, IBANs, national and tax IDs, payment tokens, password hashes and secrets, not names or street addresses. See [docs/leak-check.md](docs/leak-check.md) for the odds, the costs, the exit statuses and the data protection notes.
 
+## Give a coding agent the database
+
+`prodmask mcp` lets a coding agent read one database through prodmask's checks, over the Model Context Protocol. Claude Code, Cursor, Codex and Copilot's coding agent can all start it. Every statement must be one read, and it runs in a read-only session with row and time limits. A login that can change the database or the server is refused. The personal data and secrets prodmask recognises are replaced by tokens; what it doesn't recognise shows as stored.
+
+```bash
+claude mcp add prodmask --env PRODMASK_DSN='mysql://agent:…@127.0.0.1:3306/shop_copy' -- prodmask mcp --copy
+```
+
+Give the agent a login of its own that can only read, and point it at a prodmask Pro copy if you can: with `--copy`, a checked copy shows its masked values as stored. See [docs/coding-agents.md](docs/coding-agents.md) for what it does and doesn't catch, the limits, and the setup for each client.
+
 ## What it does to your database
 
 `prodmask scan` is built to be safe to run against production:

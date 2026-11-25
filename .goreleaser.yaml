@@ -67,6 +67,10 @@ dockers_v2:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.created: "{{ .CommitDate }}"
+      # The MCP Registry checks this, letter for letter, against the name the
+      # server is listed under, whose namespace is the GitHub organisation's
+      # login.
+      io.modelcontextprotocol.server.name: io.github.ProdMask/prodmask
     # The same on the index, where GHCR reads a multi-platform image's
     # description.
     annotations: *image-metadata

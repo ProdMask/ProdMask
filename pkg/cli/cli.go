@@ -19,7 +19,7 @@ const (
 	ExitOK       = 0
 	ExitError    = 1
 	ExitUsage    = 2
-	ExitFindings = 3
+	ExitFindings = 3 // scan: found something at or above --fail-on; mcp --check: found a reason to refuse
 	ExitLicence  = 4 // a command that needs a prodmask Pro licence found no valid one
 )
 
@@ -40,6 +40,9 @@ type Env struct {
 	App    *App
 	Stdout io.Writer
 	Stderr io.Writer
+	// Stdin is what prodmask mcp reads its messages from; nil means
+	// os.Stdin.
+	Stdin io.Reader
 }
 
 // App is one build of prodmask: its version, the text around its command
@@ -58,8 +61,8 @@ into staging: personal data, secrets, and settings that would email or charge
 real customers. It only reads, and it never prints the data it samples.
 `
 
-const freeFooter = `Run "prodmask scan -h" for the scan flags, or "prodmask leak-check -h" for the
-staging leak check.
+const freeFooter = `Run "prodmask scan -h" for the scan flags, "prodmask leak-check -h" for the
+staging leak check, or "prodmask mcp -h" to serve a database to a coding agent.
 `
 
 // New returns the free build of prodmask.
@@ -72,7 +75,7 @@ func New(version string) *App {
 // FreeCommands returns new copies of the free build's commands, for builds
 // that add their own.
 func FreeCommands() []*Command {
-	return []*Command{scanCommand(), leakCheckCommand(), versionCommand()}
+	return []*Command{scanCommand(), leakCheckCommand(), mcpCommand(), versionCommand()}
 }
 
 // reserved words select the usage text and can't name a command.

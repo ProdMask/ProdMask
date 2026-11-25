@@ -13,7 +13,14 @@ import (
 // the statement.
 var ErrStatementRefused = errors.New("prodmask stopped a statement it was about to send, because it isn't a read: this is a fault in prodmask, please report it")
 
-func refuseStatement(why string) error { return fmt.Errorf("%w (%s)", ErrStatementRefused, why) }
+// refusal is ErrStatementRefused with the rule that refused, which
+// CheckAgentStatement passes on in its own words.
+type refusal struct{ why string }
+
+func (r *refusal) Error() string { return fmt.Sprintf("%v (%s)", ErrStatementRefused, r.why) }
+func (r *refusal) Unwrap() error { return ErrStatementRefused }
+
+func refuseStatement(why string) error { return &refusal{why} }
 
 // checkStatement applies the read-only statement rules. ExecContext runs
 // only session-scope SETs (exec true); the query methods run only reads. In
@@ -312,6 +319,15 @@ const (
 type stmtToken struct {
 	kind int
 	text string
+	// raw is a word's or quoted name's own text, as written, with a quoted
+	// name's doubled quotes made one; str marks a string in single quotes.
+	raw string
+	str bool
+	// glued marks a token that starts where the one before it ends, with
+	// no space or comment between: the servers read a word glued to a dot
+	// as a qualifier, and a dot after a space with a digit glued to it as
+	// a number.
+	glued bool
 }
 
 func (t stmtToken) word(w string) bool { return t.kind == tokWord && t.text == w }
@@ -345,6 +361,12 @@ func hasControlByte(s string) bool {
 // character anywhere outside a string or quoted name, comments included.
 func statementTokens(q string) ([]stmtToken, error) {
 	var out []stmtToken
+	last := -1
+	add := func(t stmtToken, start, end int) {
+		t.glued = start == last
+		last = end
+		out = append(out, t)
+	}
 	for i := 0; i < len(q); {
 		c := q[i]
 		switch {
@@ -390,22 +412,23 @@ func statementTokens(q string) ([]stmtToken, error) {
 			if j >= len(q) {
 				return nil, refuseStatement("an unterminated string or name")
 			}
-			t := stmtToken{kind: tokQuoted}
+			t := stmtToken{kind: tokQuoted, str: c == '\''}
 			if c != '\'' {
 				// A quoted name keeps its text, with a doubled quote as one.
-				t.text = strings.ToUpper(strings.ReplaceAll(q[i+1:j], string([]byte{c, c}), string(c)))
+				t.raw = strings.ReplaceAll(q[i+1:j], string([]byte{c, c}), string(c))
+				t.text = strings.ToUpper(t.raw)
 			}
-			out = append(out, t)
+			add(t, i, j+1)
 			i = j + 1
 		case wordByte(c):
 			j := i
 			for j < len(q) && wordByte(q[j]) {
 				j++
 			}
-			out = append(out, stmtToken{kind: tokWord, text: strings.ToUpper(q[i:j])})
+			add(stmtToken{kind: tokWord, text: strings.ToUpper(q[i:j]), raw: q[i:j]}, i, j)
 			i = j
 		default:
-			out = append(out, stmtToken{kind: tokPunct, text: q[i : i+1]})
+			add(stmtToken{kind: tokPunct, text: q[i : i+1]}, i, i+1)
 			i++
 		}
 	}

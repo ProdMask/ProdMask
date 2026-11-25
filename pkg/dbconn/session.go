@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +31,9 @@ type Session struct {
 	// the client gives up on keeps running on the server.
 	ServerTimeout bool
 	Warnings      []string
+	// Settings are the session variables every connection sets on connect,
+	// by name, as sent: what a caller may read back.
+	Settings map[string]string
 }
 
 // Flavor is "mariadb" or "mysql".
@@ -50,8 +52,37 @@ func Open(ctx context.Context, cfg *mysql.Config, timeout time.Duration) (*Sessi
 // DescribeAs renders it: its errors and Server.Address show the label, never
 // cfg's address, and the driver logs nothing. An empty label is Open.
 func OpenAs(ctx context.Context, cfg *mysql.Config, timeout time.Duration, label string) (*Session, error) {
+	return OpenWith(ctx, cfg, SessionOptions{Timeout: timeout, Label: label})
+}
+
+// SessionOptions are a Session's settings. The zero value of each field
+// beyond Timeout and Label is Open's.
+type SessionOptions struct {
+	Timeout time.Duration
+	// Label names the target in errors instead of its address, as OpenAs.
+	Label string
+	// SelectLimit, above zero, sets sql_select_limit on every connection:
+	// the server sends at most that many rows of a statement without its
+	// own LIMIT.
+	SelectLimit int
+	// ServerBigSelects leaves sql_big_selects at the server's value, so a
+	// DBA's max_join_size keeps refusing the largest joins.
+	ServerBigSelects bool
+	// ColumnsWithAlias labels each result column with its table's alias:
+	// c.email for SELECT c.email … FROM customers c.
+	ColumnsWithAlias bool
+	// TraditionalExplain sets explain_format to TRADITIONAL where MySQL has
+	// it (8.0.32 on): a server-wide TREE or JSON would make a plain EXPLAIN
+	// print values from the rows it read.
+	TraditionalExplain bool
+}
+
+// OpenWith is Open with options.
+func OpenWith(ctx context.Context, cfg *mysql.Config, opts SessionOptions) (*Session, error) {
+	timeout, label := opts.Timeout, opts.Label
 	cfg = cfg.Clone()
 	quiet(cfg, label)
+	cfg.ColumnsWithAlias = opts.ColumnsWithAlias
 	// The session's settings are the probe's alone.
 	note := dropDSNSettings(cfg)
 	// The scanner never needs this, whatever the DSN says. openCheckedPool
@@ -78,6 +109,22 @@ func OpenAs(ctx context.Context, cfg *mysql.Config, timeout time.Duration, label
 	if err != nil {
 		return nil, err
 	}
+	if opts.SelectLimit > 0 {
+		params["sql_select_limit"] = strconv.Itoa(opts.SelectLimit)
+	}
+	if opts.ServerBigSelects {
+		delete(params, "sql_big_selects")
+	}
+	if opts.TraditionalExplain && s.Server.Flavor == "mysql" {
+		has, err := hasExplainFormat(ctx, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("read explain_format: %w", err)
+		}
+		if has {
+			params["explain_format"] = "TRADITIONAL"
+		}
+	}
+	s.Settings = params
 
 	cfg.Params = params
 	db, err := openCheckedPool(cfg)
@@ -90,6 +137,28 @@ func OpenAs(ctx context.Context, cfg *mysql.Config, timeout time.Duration, label
 	}
 	s.DB = db
 	return s, nil
+}
+
+// hasExplainFormat reports whether the server has explain_format, as MySQL
+// has from 8.0.32. It's read, not judged by the version, which a fork may
+// spell its own way. Error 1193, an unknown variable, means it hasn't; any
+// other error fails the session.
+func hasExplainFormat(ctx context.Context, cfg *mysql.Config) (bool, error) {
+	db, err := openCheckedPool(cfg)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	var v sql.NullString
+	err = db.QueryRowContext(ctx, "SELECT @@SESSION.explain_format").Scan(&v)
+	var my *mysql.MySQLError
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.As(err, &my) && my.Number == 1193:
+		return false, nil
+	}
+	return false, err
 }
 
 // openPool opens a Snapshot's pool, whose statements the Snapshot's methods
@@ -211,34 +280,12 @@ var writePrivs = map[string]bool{
 // WritePrivileges reads SHOW GRANTS output and returns the privileges that
 // would let the user change the given database.
 func WritePrivileges(grants []string, database string) []string {
-	found := map[string]bool{}
-	for _, g := range grants {
-		up := strings.ToUpper(g)
-		if !strings.HasPrefix(up, "GRANT ") {
-			continue
-		}
-		on := strings.Index(up, " ON ")
-		if on < 0 {
-			continue // role grant
-		}
-		to := strings.Index(up[on:], " TO ")
-		if to < 0 {
-			continue
-		}
-		if !grantCovers(strings.TrimSpace(g[on+4:on+to]), database) {
-			continue
-		}
-		for _, p := range splitPrivileges(up[len("GRANT "):on]) {
-			if writePrivs[p] {
-				found[p] = true
-			}
+	out := []string{}
+	for _, p := range ParseGrants(grants).On(database) {
+		if writePrivs[p] {
+			out = append(out, p)
 		}
 	}
-	out := make([]string, 0, len(found))
-	for p := range found {
-		out = append(out, p)
-	}
-	sort.Strings(out)
 	return out
 }
 

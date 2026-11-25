@@ -19,11 +19,12 @@ real customers. It only reads, and it never prints the data it samples.
 
 Usage:
   prodmask leak-check key|hash|compare [flags]    count real production values on a staging database
+  prodmask mcp [flags]                            serve a database to a coding agent over MCP (read-only)
   prodmask scan [flags]                           scan a database (read-only)
   prodmask version                                print the version
 
-Run "prodmask scan -h" for the scan flags, or "prodmask leak-check -h" for the
-staging leak check.
+Run "prodmask scan -h" for the scan flags, "prodmask leak-check -h" for the
+staging leak check, or "prodmask mcp -h" to serve a database to a coding agent.
 `
 
 func run(a *App, args ...string) (code int, stdout, stderr string) {
@@ -124,6 +125,7 @@ func TestRegister(t *testing.T) {
 	wantPro := "About.\n\nUsage:\n" +
 		"  prodmask copy [flags]                           make a copy\n" +
 		"  prodmask leak-check key|hash|compare [flags]    count real production values on a staging database\n" +
+		"  prodmask mcp [flags]                            serve a database to a coding agent over MCP (read-only)\n" +
 		"  prodmask scan [flags]                           scan a database (read-only)\n" +
 		"  prodmask version                                print the version\n" +
 		"\nFooter.\n"
@@ -145,7 +147,7 @@ func TestRegister(t *testing.T) {
 	for _, c := range a.Commands() {
 		names = append(names, c.Name)
 	}
-	if strings.Join(names, " ") != "copy leak-check scan version" {
+	if strings.Join(names, " ") != "copy leak-check mcp scan version" {
 		t.Errorf("Commands: got %q", names)
 	}
 

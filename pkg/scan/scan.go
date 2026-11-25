@@ -6,7 +6,6 @@ package scan
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -125,93 +124,18 @@ func Run(ctx context.Context, sess *dbconn.Session, opts Options) (*model.Result
 			ts.KeyColumn, ts.ValueColumn = meta.Key, meta.Value
 		}
 
-		var (
-			s  *sample.Sample
-			kv *kvRead
-		)
-		var keyNames *model.Finding
+		var r tableReads
 		if opts.Samples {
-			if meta != nil {
-				kv = readKV(ctx, sess, sampler, t, meta, opts, b)
-			}
-			s, err = sampler.Table(ctx, t, windowRows(opts, kv))
-			if err != nil {
-				ts.Error = dbconn.ErrorText(err)
+			r = readTable(ctx, sess, sampler, t, meta, pr, opts, b)
+			if r.sampleErr != nil {
+				ts.Error = dbconn.ErrorText(r.sampleErr)
 				res.Warnings = append(res.Warnings, fmt.Sprintf("could not sample %s: %s", t.Name, ts.Error))
 			}
-			if kv != nil && kv.mode == modeSample && !kv.demoted {
-				kv.sampleKV(ctx, sampler, sess, t, meta, s, opts, b)
-			}
-			if s != nil {
-				ts.RowsSampled = len(s.Rows)
-				ids.Collect(t, s)
-			}
-			if kv != nil {
-				ts.RowsSampled += kv.rows
-				ts.ReadFailed = len(kv.failures()) > 0
-				if kv.demoted {
-					// Keyed by data, such as people's names: judged as a
-					// plain table, whose key column may hold the names.
-					// Failed statements are still reported.
-					res.Warnings = append(res.Warnings, kv.failures()...)
-					keyNames = demotedKeyFinding(t, meta, kv)
-					meta, kv = nil, nil
-					ts.Kind, ts.KeyColumn, ts.ValueColumn = "table", "", ""
-				} else {
-					res.Warnings = append(res.Warnings, kv.warnings...)
-				}
-			}
-			if ts.Action == "" && cacheTable(t) && holdsText(s, kv) {
-				ts.PossibleAction = "truncate"
-				ts.PossibleActionReason = "looks like a cache: applications rebuild their caches, so emptying the copy's " +
-					"is usually safe; check that this one is rebuilt"
+			if r.s != nil {
+				ids.Collect(t, r.s)
 			}
 		}
-
-		var findings []model.Finding
-		if kv != nil {
-			var hidden int
-			findings, hidden = analyzeKV(t, s, meta, kv)
-			ts.Keys = len(kv.keys)
-			if n, named := skippedSummary(t, meta, kv); n > 0 {
-				res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s were not sampled (limits: %d keys and %d MB per table, "+
-					"%d keys and %d MB per scan); %d of them match names and are listed at low confidence in the JSON report",
-					n, t.Name, tableKeys, tableBytes>>20, scanKeys, scanBytes>>20, named))
-			}
-			switch {
-			case hidden == 1:
-				ts.HiddenKeys = hidden
-				res.Warnings = append(res.Warnings, fmt.Sprintf("1 key of %s holds findings but isn't shown, since its name "+
-					"may hold personal data; the starter config has no rule for it", t.Name))
-			case hidden > 1:
-				ts.HiddenKeys = hidden
-				res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s hold findings but aren't shown, since their names "+
-					"may hold personal data; the starter config has no rules for them", hidden, t.Name))
-			}
-		}
-		findings = append(findings, analyzeColumns(t, s, pr, meta)...)
-		if keyNames != nil && !slices.ContainsFunc(findings, func(f model.Finding) bool {
-			return f.Column == keyNames.Column && f.Confidence > model.ConfidenceLow
-		}) {
-			findings = append(findings, *keyNames)
-		}
-		if opts.Samples {
-			fs, warns := rowSubjects(ctx, sampler, t, pr)
-			findings = append(findings, fs...)
-			res.Warnings = append(res.Warnings, warns...)
-		}
-		hashUnique(t, findings)
-		fitFakes(t, findings)
-		for _, f := range findings {
-			if f.Confidence > model.ConfidenceLow {
-				ts.Findings++
-				if f.Severity > ts.Highest {
-					ts.Highest = f.Severity
-				}
-			}
-		}
-		res.Findings = append(res.Findings, findings...)
-		res.Tables = append(res.Tables, ts)
+		judgeTable(res, t, ts, meta, r.s, r.kv, r.rows, r.rowWarns, pr, scanLimits)
 	}
 	if opts.Progress != nil {
 		opts.Progress(len(order), len(order), "")
@@ -403,50 +327,6 @@ func addBinaryIPs(p *detect.Profile, s *sample.Sample, i int) bool {
 		}
 	}
 	return decoded
-}
-
-// rowSubjectRows is how many rows a row subject reads.
-const rowSubjectRows = 50
-
-// rowSubjects judges the columns whose data depends on the row, such as
-// the titles of WordPress privacy requests. Each runs only when an index
-// leads with the column its condition filters on, so no subject needs a
-// full scan.
-func rowSubjects(ctx context.Context, sm *sample.Sampler, t *model.Table, pr *preset.Result) ([]model.Finding, []string) {
-	var (
-		out   []model.Finding
-		warns []string
-	)
-	words := detect.Tokens(t.Name)
-	for _, rs := range pr.RowSubjects {
-		if rs.Table != t.Name {
-			continue
-		}
-		c := t.Column(rs.Column)
-		if c == nil {
-			continue
-		}
-		if !t.KeyIndex(rs.IndexColumn).Found {
-			warns = append(warns, fmt.Sprintf("skipped the rows where %s in %s: no index on %s", rs.Where, t.Name, rs.IndexColumn))
-			continue
-		}
-		vals, err := sm.Where(ctx, t, c, rs.Where, rowSubjectRows)
-		if err != nil {
-			warns = append(warns, fmt.Sprintf("could not read the rows where %s in %s (%s)", rs.Where, t.Name, dbconn.ErrorText(err)))
-			continue
-		}
-		if len(vals) == 0 {
-			continue
-		}
-		p := detect.NewProfileNamed(c.Name).WithContext(words)
-		for _, v := range vals {
-			p.Add(v)
-		}
-		sub := detect.Subject{Table: t.Name, Column: c.Name, Name: c.Name, DataType: c.DataType, Context: words,
-			Hint: rs.Hint, Sampled: true, Where: rs.Where}
-		out = append(out, detect.Analyze(sub, p)...)
-	}
-	return out, warns
 }
 
 // Column pairs that make a table a key/value store even without a preset.

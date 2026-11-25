@@ -79,3 +79,50 @@ jobs:
           if [ -s "$RUNNER_TEMP/test.json" ]; then
             jq -R -n -j '[inputs | fromjson? // {Output: "\(.)\n"}] | group_by(.Package // .ImportPath) | .[][] | .Output // empty' "$RUNNER_TEMP/test.json"
           fi
+
+  # prodmask mcp against the official MCP Go SDK's client: tests/mcpclient is
+  # a module of its own, so the SDK never reaches prodmask's go.mod. Its test
+  # builds the binary, starts it over standard input and output, and calls
+  # each tool.
+  mcp-client:
+    name: mcp client (mariadb:11.8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      db:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: ci-only-root
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -pci-only-root"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      PRODMASK_TEST_DSN: root:ci-only-root@tcp(127.0.0.1:3306)/
+      PRODMASK_TEST_REQUIRE_ALL: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: tests/mcpclient
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tests/mcpclient/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -count=1 -v ./... | tee "$RUNNER_TEMP/mcpclient.log"
+      # As above: with this job's env: lost, the test would skip and pass.
+      - name: Check that the server test ran
+        run: |
+          if grep -q -- '--- PASS: TestSDKClient' "$RUNNER_TEMP/mcpclient.log"; then
+            exit 0
+          fi
+          echo "::error::tests/mcpclient's TestSDKClient didn't pass, so it may have skipped. Check this job's env: block."
+          exit 1
