@@ -20,7 +20,7 @@ PRODMASK_TEST_DSN='root:…@tcp(127.0.0.1:3306)/' go test ./...
 
 With `PRODMASK_TEST_REQUIRE_ALL=1` as well (any value but `0` counts), a test that needs a server fails instead of skipping when `PRODMASK_TEST_DSN` isn't set, so a run meant to test against a server can't pass by skipping.
 
-CI runs them on MySQL 8.4 and MariaDB 11.8. Their findings are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line.
+CI runs them on MySQL 8.4 and MariaDB 11.8. Their findings and side effects are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line. The reports have golden files of their own in `pkg/report/testdata`, which `go test ./pkg/report -update` rewrites with no server.
 
 ## Test data
 

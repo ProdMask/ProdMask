@@ -80,13 +80,13 @@ func Markdown(w io.Writer, res *model.Result) error {
 
 	if len(res.SideEffects) > 0 {
 		pf("## What staging could do to real people\n\n")
-		pf("| Severity | What | Where | Fix in the copy |\n|---|---|---|---|\n")
+		pf("| Staging would | Severity | What | Where | Fix in the copy |\n|---|---|---|---|---|\n")
 		for _, se := range res.SideEffects {
 			where := code(se.Table)
 			if se.Item != "" {
 				where += " " + code(se.Item)
 			}
-			pf("| %s | %s | %s | %s |\n", title(se.Severity), cell(se.Summary), where, cell(se.Fix))
+			pf("| %s | %s | %s | %s | %s |\n", cell(sideEffectLabel(se)), title(se.Severity), cell(se.Summary), where, cell(se.Fix))
 		}
 		pf("\n")
 	}

@@ -224,14 +224,21 @@ func (f Finding) Location() string {
 // SideEffect is something a plain copy would let staging do to real people:
 // send them email, charge their cards, call their webhooks.
 type SideEffect struct {
-	Platform string   `json:"platform"`
-	Kind     string   `json:"kind"`
+	Platform string `json:"platform"`
+	Kind     string `json:"kind"`
+	// Label says in a few words what staging would do, such as "send email":
+	// the terminal report leads the side effect's row with it.
+	Label    string   `json:"label"`
 	Table    string   `json:"table"`
 	Item     string   `json:"item,omitempty"`
 	Severity Severity `json:"severity"`
 	Summary  string   `json:"summary"`
-	Count    int64    `json:"count,omitempty"`
-	Fix      string   `json:"fix"`
+	// Lead is the start of Summary that the terminal report shows; the rest
+	// is in --verbose and the other outputs, which show Summary whole. It is
+	// never written to the JSON report.
+	Lead  string `json:"-"`
+	Count int64  `json:"count,omitempty"`
+	Fix   string `json:"fix"`
 }
 
 // Relationship links a child column to a parent key. Declared relationships

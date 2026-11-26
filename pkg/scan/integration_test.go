@@ -613,6 +613,19 @@ func TestWordPressMultisite(t *testing.T) {
 		"INSERT INTO "+db+".wp_2_options (option_name, option_value) VALUES ('woocommerce_version', '9.3.3'), "+
 			"('fixture_b_recipient', 'staff@fixture-store.gr'), ('fixture_a_recipient', 'owner@fixture-store.gr')",
 		"INSERT INTO "+db+".wp_2_posts (post_type, post_password) VALUES ('shop_order', 'wc_order_"+strings.Repeat("x", 13)+"')",
+		// Rows for the side effects and forms no other fixture reaches: a
+		// mail plugin set for the whole network in wp_sitemeta; one
+		// WooCommerce Memberships email on the shop's site, for the singular
+		// forms; a cron option longer than the 65,535 bytes the check reads,
+		// for "at least"; and a Jetpack connection with no connected service.
+		"CREATE TABLE "+db+".wp_sitemeta (meta_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, "+
+			"site_id bigint unsigned NOT NULL DEFAULT 0, meta_key varchar(255) DEFAULT NULL, meta_value longtext)",
+		"INSERT INTO "+db+".wp_sitemeta (site_id, meta_key, meta_value) VALUES "+
+			`(1, 'wp_mail_smtp', 'a:1:{s:4:"mail";a:1:{s:6:"mailer";s:4:"smtp";}}')`,
+		"INSERT INTO "+db+".wp_2_options (option_name, option_value) VALUES "+
+			`('woocommerce_wc_memberships_membership_ending_soon_email_settings', 'a:1:{s:7:"enabled";s:3:"yes";}')`,
+		"INSERT INTO "+db+".wp_options (option_name, option_value) VALUES ('cron', '"+longCron()+"')",
+		jetpackConnection(db+".wp_2_options"),
 	)
 	for _, s := range stmts {
 		if _, err := admin.ExecContext(ctx, s); err != nil {
@@ -627,6 +640,30 @@ func TestWordPressMultisite(t *testing.T) {
 	// Each example once, in order, whichever site it came from.
 	expectSideEffectLike(t, res, "email", model.SeverityMedium, "4 plugin settings on 2 sites send notification emails "+
 		"to staff addresses (for example fixture_a_recipient, fixture_admin_recipient, fixture_b_recipient)")
+}
+
+// jetpackConnection inserts into a site's options a Jetpack connection
+// with no connected service active: the connection check's medium form,
+// whose lead is only the start of its sentence. The WordPress fixture has
+// the high one. The token is made up, built at run time.
+func jetpackConnection(table string) string {
+	token := "fixture" + strings.Repeat("k", 25) + "." + strings.Repeat("t", 32)
+	return fmt.Sprintf(`INSERT INTO %s (option_name, option_value) VALUES `+
+		`('jetpack_private_options', 'a:1:{s:10:"blog_token";s:%d:"%s";}')`, table, len(token), token)
+}
+
+// longCron is a WP-Cron option past the 65,535 bytes the cron check reads:
+// one made-up hook, scheduled hourly at 500 times a minute apart.
+func longCron() string {
+	const hook, events = "fixture_cleanup", 500
+	var b strings.Builder
+	fmt.Fprintf(&b, "a:%d:{", events)
+	for i := range events {
+		fmt.Fprintf(&b, `i:%d;a:1:{s:%d:"%s";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";`+
+			`a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}`, 1700000000+60*i, len(hook), hook)
+	}
+	b.WriteString("}")
+	return b.String()
 }
 
 const (

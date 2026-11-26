@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -13,6 +14,8 @@ import (
 	"github.com/ProdMask/ProdMask/pkg/fixture"
 	"github.com/ProdMask/ProdMask/pkg/model"
 )
+
+var lineBreaks = regexp.MustCompile(` *\n *`)
 
 // checkPlanted checks that no rendered output and no golden file holds a
 // planted secret, its base64 or decoded form, or eight characters in a row
@@ -24,6 +27,11 @@ func checkPlanted(t *testing.T, name string, p *fixture.Planted, outputs map[str
 	for k, v := range outputs {
 		texts[k] = v
 	}
+	// The text report wraps long lines between words, so it's searched with
+	// its line breaks and indents joined too, by a space and by nothing: a
+	// planted value broken across lines can't slip past.
+	texts["txt joined"] = lineBreaks.ReplaceAllString(outputs["txt"], " ")
+	texts["txt squeezed"] = lineBreaks.ReplaceAllString(outputs["txt"], "")
 	if golden, err := os.ReadFile(filepath.Join("testdata", name+".findings")); err == nil {
 		texts["golden"] = string(golden)
 	}

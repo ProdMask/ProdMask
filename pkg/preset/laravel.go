@@ -56,10 +56,12 @@ func (e *env) laravel() bool {
 			e.warn(fmt.Sprintf("could not count queued jobs: %s", dbconn.ErrorText(err)))
 		} else if total > 0 {
 			rows, _ := e.rows("SELECT queue, COUNT(*) FROM " + sample.QuoteIdent("jobs") + " GROUP BY queue ORDER BY COUNT(*) DESC LIMIT 5")
+			lead := fmt.Sprintf("%d queued jobs would run when a queue worker starts on staging", total)
+			rest := fmt.Sprintf(" (queues: %s)", topCounts(rows, 3))
 			e.sideEffect(model.SideEffect{
-				Platform: lv, Kind: "queued_jobs", Table: "jobs", Severity: model.SeverityMedium, Count: total,
-				Summary: fmt.Sprintf("%d queued jobs would run when a queue worker starts on staging (queues: %s)", total, topCounts(rows, 3)),
-				Fix:     "Empty the jobs table in the copy",
+				Platform: lv, Kind: "queued_jobs", Label: "run queued jobs", Table: "jobs", Severity: model.SeverityMedium,
+				Count: total, Lead: lead, Summary: lead + rest,
+				Fix: "Empty the jobs table in the copy",
 			})
 		}
 	}

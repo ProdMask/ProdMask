@@ -1,0 +1,343 @@
+[1mprodmask scan[0m [2m· shop · MariaDB 11.8.9 at 127.0.0.1:3381[0m
+Platforms: WordPress (prefix wp_, db_version 60421) · WooCommerce 9.3.3 (prefix
+  wp_, orders in HPOS tables)
+Scanned 28 tables · 9,100 rows sampled · 278 ms
+
+[1mFindings by table[0m[2m · 157 findings in 18 tables[0m
+[2mEvidence that didn't fit is left out; add --verbose.[0m
+  [1mwp_options[0m [2m· key/value: option_name → option_value · 252 keys · ~252 rows[0m
+    [1;91mCRITICAL[0m  [as3cf_settings] → access-key-id
+              secret, key or token · high · [2msecret formats found: AWS access ke…[0m
+    [1;91mCRITICAL[0m  [woocommerce_paypal_settings] → api_password
+              secret, key or token · high · [2mname contains "password"; 1 of 1 sa…[0m
+    [1;91mCRITICAL[0m  [woocommerce_stripe_settings] → secret_key
+              secret, key or token · high · [2mname contains "secret key"; secret …[0m
+    [1;91mCRITICAL[0m  [woocommerce_stripe_settings] → webhook_secret
+              secret, key or token · high · [2mname contains "webhook secret"; sec…[0m
+    [1;91mCRITICAL[0m  [wp_mail_smtp] → sendgrid.api_key
+              secret, key or token · high · [2mname contains "api key"; secret for…[0m
+    [1;91mCRITICAL[0m  [wpgmza_temp_api]
+              secret, key or token · high · [2msecret formats found: Google API ke…[0m
+    [31mHIGH    [0m  [admin_email]
+              email address · high · [2mknown field (wordpress preset); 1 of 1 sam…[0m
+    [31mHIGH    [0m  [fixture_admin_recipient]
+              email address · high · [2mname contains "recipient"; 1 of 1 sampled …[0m
+    [31mHIGH    [0m  [fixture_hashids_salt]
+              secret, key or token · medium · [2mname contains "salt"[0m
+    [31mHIGH    [0m  [jetpack_private_options] → blog_token
+              secret, key or token · medium · [2mname contains "token"[0m
+    [31mHIGH    [0m  [logged_in_salt]
+              secret, key or token · high · [2mknown field (wordpress preset); aut…[0m
+    [31mHIGH    [0m  [rank-math-options-titles] → facebook_secret
+              secret, key or token · medium · [2mname contains "secret"[0m
+    [31mHIGH    [0m  [secret_key]
+              secret, key or token · high · [2mknown field (wordpress preset); aut…[0m
+    [31mHIGH    [0m  [um_cache_userdata_*]
+              email address · high · [2m60 keys; um_email_as_username_*: name cont…[0m
+    [31mHIGH    [0m  [woocommerce_cancelled_order_settings] → recipi…
+              email address · high · [2mname contains "recipient"; 1 of 1 sampled …[0m
+    [31mHIGH    [0m  [woocommerce_new_order_settings] → recipient
+              email address · high · [2mname contains "recipient"; 1 of 1 sampled …[0m
+    [31mHIGH    [0m  [woocommerce_paypal_settings] → api_signature
+              secret, key or token · medium · [2mname contains "api signature"[0m
+    [31mHIGH    [0m  [woocommerce_paypal_settings] → email
+              email address · high · [2mname contains "email"; 1 of 1 sampled valu…[0m
+    [31mHIGH    [0m  [woocommerce_paypal_settings] → sandbox_api_pas…
+              secret, key or token · high · [2mname contains "password"; 1 of 1 sa…[0m
+    [31mHIGH    [0m  [woocommerce_stripe_settings] → test_secret_key
+              secret, key or token · high · [2mname contains "secret key"; secret …[0m
+    [31mHIGH    [0m  [wp_mail_smtp] → mail.from_email
+              email address · high · [2mname contains "email"; 1 of 1 sampled valu…[0m
+    [31mHIGH    [0m  [wp_mail_smtp_mail_key]
+              secret, key or token · high · [2mknown field (wordpress preset); WP …[0m
+    [33mMEDIUM  [0m  [limit_login_lockouts] → {}
+              IP address · medium · [2m2 of 2 sampled values look like IP addresses[0m
+    [33mMEDIUM  [0m  [limit_login_logged] → {}
+              IP address · medium · [2m1 of 1 sampled values look like IP addresses[0m
+    [33mMEDIUM  [0m  [limit_login_retries] → {}
+              IP address · medium · [2m1 of 1 sampled values look like IP addresses[0m
+    [33mMEDIUM  [0m  [limit_login_retries_valid] → {}
+              IP address · medium · [2m1 of 1 sampled values look like IP addresses[0m
+    [33mMEDIUM  [0m  [woocommerce_paypal_settings] → api_username
+              username · medium · [2mname contains "user name"[0m
+  [1mwp_woocommerce_api_keys[0m [2m· ~2 rows[0m
+    [1;91mCRITICAL[0m  consumer_secret  secret, key or token  high  [2mknown field (woocomm…[0m
+    [31mHIGH    [0m  consumer_key     secret, key or token  high  [2mknown field (woocomm…[0m
+  [1mwp_commentmeta[0m [2m· key/value: meta_key → meta_value · 4 keys · ~352 rows[0m
+    [31mHIGH    [0m  [akismet_as_submitted] → comment_author_email
+              email address · high · [2mname contains "email"; 121 of 121 sampled …[0m
+    [33mMEDIUM  [0m  [akismet_as_submitted] → comment_author
+              person name · medium · [2mname contains "comment author"[0m
+    [33mMEDIUM  [0m  [akismet_as_submitted] → comment_content
+              free text with personal data · medium · [2mname contains "comment"; …[0m
+    [33mMEDIUM  [0m  [akismet_as_submitted] → user_agent
+              user agent · high · [2mname contains "user agent"; 121 of 121 sample…[0m
+    [33mMEDIUM  [0m  [akismet_as_submitted] → user_ip
+              IP address · high · [2mname contains "ip"; 121 of 121 sampled values…[0m
+    [36mLOW     [0m  [akismet_as_submitted] → comment_author_url
+              personal website · medium · [2mname contains "author url"[0m
+  [1mwp_comments[0m [2m· ~140 rows[0m
+    [31mHIGH    [0m  comment_author_email  email address                 high
+    [33mMEDIUM  [0m  comment_agent         user agent                    high
+    [33mMEDIUM  [0m  comment_author        person name                   medium
+    [33mMEDIUM  [0m  comment_author_IP     IP address                    high
+    [33mMEDIUM  [0m  comment_content       free text with personal data  medium
+    [36mLOW     [0m  comment_author_url    personal website              medium
+  [1mwp_postmeta[0m [2m· key/value: meta_key → meta_value · 50 keys · ~21,648 rows[0m
+    [31mHIGH    [0m  [_billing_address_1]       street address                medium
+    [31mHIGH    [0m  [_billing_address_index]   street address                high
+    [31mHIGH    [0m  [_billing_email]           email address                 high
+    [31mHIGH    [0m  [_billing_phone]           phone number                  high
+    [31mHIGH    [0m  [_mail] → recipient        email address                 high
+    [31mHIGH    [0m  [_shipping_address_1]      street address                medium
+    [31mHIGH    [0m  [_shipping_address_index]  street address                high
+    [31mHIGH    [0m  [_stripe_customer_id]      payment token or ID           medium
+    [31mHIGH    [0m  [_stripe_source_id]        payment token or ID           medium
+    [31mHIGH    [0m  [customer_email] → []      email address                 high
+    [33mMEDIUM  [0m  [_bbp_author_ip]           IP address                    high
+    [33mMEDIUM  [0m  [_billing_city]            city                          medium
+    [33mMEDIUM  [0m  [_billing_first_name]      person name                   medium
+    [33mMEDIUM  [0m  [_billing_last_name]       person name                   medium
+    [33mMEDIUM  [0m  [_billing_postcode]        postcode                      medium
+    [33mMEDIUM  [0m  [_customer_ip_address]     IP address                    high
+    [33mMEDIUM  [0m  [_customer_user_agent]     user agent                    high
+    [33mMEDIUM  [0m  [_mail] → sender           free text with personal data  high
+    [33mMEDIUM  [0m  [_order_key]               secret, key or token          high
+    [33mMEDIUM  [0m  [_shipping_city]           city                          medium
+    [33mMEDIUM  [0m  [_shipping_first_name]     person name                   medium
+    [33mMEDIUM  [0m  [_shipping_last_name]      person name                   medium
+    [33mMEDIUM  [0m  [_shipping_postcode]       postcode                      medium
+    [33mMEDIUM  [0m  [_transaction_id]          payment token or ID           high
+    [36mLOW     [0m  [_billing_company]         company name                  medium
+    [36mLOW     [0m  [_billing_country]         country                       medium
+    [36mLOW     [0m  [_billing_state]           region or state               medium
+    [36mLOW     [0m  [_shipping_country]        country                       medium
+  [1mwp_posts[0m [2m· ~268 rows[0m
+    [31mHIGH    [0m  post_title where post_type = 'user_request'
+              email address · high · [2mknown field (wordpress preset); 1 of 1 sam…[0m
+    [33mMEDIUM  [0m  post_password
+              secret, key or token · high · [2mknown field (woocommerce preset); W…[0m
+  [1mwp_um_metadata[0m [2m· key/value: um_key → um_value · 3 keys · ~57 rows[0m
+    [31mHIGH    [0m  [mobile_number]  phone number  high  [2mname contains "mobile number…[0m
+  [1mwp_usermeta[0m [2m· key/value: meta_key → meta_value · 33 keys · ~1,497 rows[0m
+    [31mHIGH    [0m  meta_key[um_email_as_username_*]
+              email address · high · [2m6 keys; known key family; the key names ho…[0m
+    [31mHIGH    [0m  [billing_address_1]
+              street address · medium · [2mname contains "address"[0m
+    [31mHIGH    [0m  [billing_email]
+              email address · high · [2mname contains "email"; 24 of 24 sampled va…[0m
+    [31mHIGH    [0m  [billing_phone]
+              phone number · high · [2mname contains "phone"; 24 of 24 sampled val…[0m
+    [31mHIGH    [0m  [session_tokens]
+              secret, key or token · high · [2mknown field (wordpress preset); log…[0m
+    [31mHIGH    [0m  [shipping_address_1]
+              street address · medium · [2mname contains "address"[0m
+    [31mHIGH    [0m  [um_email_as_username_*]
+              email address · high · [2m6 keys; name contains "email"; 6 of 6 samp…[0m
+    [33mMEDIUM  [0m  [billing_city]
+              city · medium · [2mname contains "city"[0m
+    [33mMEDIUM  [0m  [billing_first_name]
+              person name · medium · [2mname contains "first name"[0m
+    [33mMEDIUM  [0m  [billing_last_name]
+              person name · medium · [2mname contains "last name"[0m
+    [33mMEDIUM  [0m  [billing_postcode]
+              postcode · medium · [2mname contains "postcode"[0m
+    [33mMEDIUM  [0m  [community-events-location]
+              geolocation · high · [2mknown field (wordpress preset); IP address a…[0m
+    [33mMEDIUM  [0m  [community-events-location] → ip
+              IP address · high · [2mname contains "ip"; 21 of 21 sampled values m…[0m
+    [33mMEDIUM  [0m  [community-events-location] → latitude
+              geolocation · medium · [2mname contains "latitude"[0m
+    [33mMEDIUM  [0m  [community-events-location] → longitude
+              geolocation · medium · [2mname contains "longitude"[0m
+    [33mMEDIUM  [0m  [description]
+              free text with personal data · medium · [2mknown field (wordpress pr…[0m
+    [33mMEDIUM  [0m  [first_name]
+              person name · medium · [2mname contains "first name"[0m
+    [33mMEDIUM  [0m  [last_name]
+              person name · medium · [2mname contains "last name"[0m
+    [33mMEDIUM  [0m  [nickname]
+              person name · medium · [2mname contains "nick name"[0m
+    [33mMEDIUM  [0m  [session_tokens] → *.ip
+              IP address · high · [2mname contains "ip"; 24 of 24 sampled values m…[0m
+    [33mMEDIUM  [0m  [session_tokens] → *.ua
+              user agent · high · [2m24 of 24 sampled values look like browser use…[0m
+    [33mMEDIUM  [0m  [shipping_city]
+              city · medium · [2mname contains "city"[0m
+    [33mMEDIUM  [0m  [shipping_first_name]
+              person name · medium · [2mname contains "first name"[0m
+    [33mMEDIUM  [0m  [shipping_last_name]
+              person name · medium · [2mname contains "last name"[0m
+    [33mMEDIUM  [0m  [shipping_postcode]
+              postcode · medium · [2mname contains "postcode"[0m
+    [36mLOW     [0m  [billing_company]
+              company name · medium · [2mname contains "company"[0m
+    [36mLOW     [0m  [billing_country]
+              country · medium · [2mname contains "country"[0m
+    [36mLOW     [0m  [billing_state]
+              region or state · medium · [2mname contains "billing state"[0m
+    [36mLOW     [0m  [community-events-location] → country
+              country · medium · [2mname contains "country"[0m
+    [36mLOW     [0m  [shipping_country]
+              country · medium · [2mname contains "country"[0m
+  [1mwp_users[0m [2m· ~60 rows[0m
+    [31mHIGH    [0m  display_name         email address                 medium
+    [31mHIGH    [0m  user_activation_key  secret, key or token          high
+    [31mHIGH    [0m  user_email           email address                 high
+    [31mHIGH    [0m  user_login           email address                 medium
+    [31mHIGH    [0m  user_nicename        email address                 medium
+    [31mHIGH    [0m  user_pass            password hash                 high
+    [33mMEDIUM  [0m  display_name         person name                   medium
+    [33mMEDIUM  [0m  user_login           username                      medium
+    [33mMEDIUM  [0m  user_nicename        username                      medium
+    [33mMEDIUM  [0m  user_url             free text with personal data  medium
+    [36mLOW     [0m  user_url             personal website              medium
+  [1mwp_wc_customer_lookup[0m [2m· ~59 rows[0m
+    [31mHIGH    [0m  email       email address    high    [2mname contains "email"; 59 of…[0m
+    [33mMEDIUM  [0m  city        city             medium  [2mname contains "city"[0m
+    [33mMEDIUM  [0m  first_name  person name      medium  [2mname contains "first name"[0m
+    [33mMEDIUM  [0m  last_name   person name      medium  [2mname contains "last name"[0m
+    [33mMEDIUM  [0m  postcode    postcode         medium  [2mname contains "postcode"[0m
+    [33mMEDIUM  [0m  username    username         medium  [2mname contains "user name"[0m
+    [36mLOW     [0m  country     country          medium  [2mname contains "country"[0m
+    [36mLOW     [0m  state       region or state  high    [2mknown field (woocommerce pre…[0m
+  [1mwp_wc_order_addresses[0m [2m· ~800 rows[0m
+    [31mHIGH    [0m  address_1   street address   medium  [2mname contains "address"[0m
+    [31mHIGH    [0m  address_2   street address   medium  [2mname contains "address"; no …[0m
+    [31mHIGH    [0m  email       email address    high    [2mname contains "email"; 300 o…[0m
+    [31mHIGH    [0m  phone       phone number     high    [2mname contains "phone"; 300 o…[0m
+    [33mMEDIUM  [0m  city        city             medium  [2mname contains "city"[0m
+    [33mMEDIUM  [0m  first_name  person name      medium  [2mname contains "first name"[0m
+    [33mMEDIUM  [0m  last_name   person name      medium  [2mname contains "last name"[0m
+    [33mMEDIUM  [0m  postcode    postcode         medium  [2mname contains "postcode"[0m
+    [36mLOW     [0m  company     company name     medium  [2mname contains "company"[0m
+    [36mLOW     [0m  country     country          medium  [2mname contains "country"[0m
+    [36mLOW     [0m  state       region or state  high    [2mknown field (woocommerce pre…[0m
+  [1mwp_wc_orders[0m [2m· ~400 rows[0m
+    [31mHIGH    [0m  billing_email   email address                 high
+    [31mHIGH    [0m  customer_note   free text with personal data  high
+    [33mMEDIUM  [0m  ip_address      IP address                    high
+    [33mMEDIUM  [0m  transaction_id  payment token or ID           high
+    [33mMEDIUM  [0m  user_agent      user agent                    high
+  [1mwp_wc_orders_meta[0m [2m· key/value: meta_key → meta_value · 6 keys · ~2,400 rows[0m
+    [31mHIGH    [0m  [_billing_address_index]            street address       high
+    [31mHIGH    [0m  [_shipping_address_index]           street address       high
+    [31mHIGH    [0m  [_stripe_customer_id]               payment token or ID  medium
+    [33mMEDIUM  [0m  [_wc_order_attribution_user_agent]  user agent           high
+  [1mwp_wc_webhooks[0m [2m· ~3 rows[0m
+    [31mHIGH    [0m  secret  secret, key or token  medium  [2mname contains "secret"[0m
+  [1mwp_woocommerce_payment_tokens[0m [2m· ~20 rows[0m
+    [31mHIGH    [0m  token  payment token or ID  high  [2mknown field (woocommerce preset…[0m
+  [1mwp_woocommerce_sessions[0m [2m· ~25 rows[0m
+    [31mHIGH    [0m  session_value → customer.address_1   street address  medium
+    [31mHIGH    [0m  session_value → customer.email       email address   high
+    [31mHIGH    [0m  session_value → customer.phone       phone number    high
+    [33mMEDIUM  [0m  session_value                        session data    high
+    [33mMEDIUM  [0m  session_value → customer.city        city            medium
+    [33mMEDIUM  [0m  session_value → customer.first_name  person name     medium
+    [33mMEDIUM  [0m  session_value → customer.last_name   person name     medium
+    [33mMEDIUM  [0m  session_value → customer.postcode    postcode        medium
+    [36mLOW     [0m  session_value → customer.country     country         medium
+  [1mwp_wc_order_operational_data[0m [2m· ~400 rows[0m
+    [33mMEDIUM  [0m  order_key  secret, key or token  high  [2mknown field (woocommerce p…[0m
+  [1mwp_woocommerce_payment_tokenmeta[0m [2m· key/value: meta_key → meta_value · 4 keys ·[0m
+    [2m~80 rows[0m
+    [36mLOW     [0m  [card_type]     card details  high  [2mknown field (woocommerce pres…[0m
+    [36mLOW     [0m  [expiry_month]  card details  high  [2mknown field (woocommerce pres…[0m
+    [36mLOW     [0m  [expiry_year]   card details  high  [2mknown field (woocommerce pres…[0m
+    [36mLOW     [0m  [last4]         card details  high  [2mknown field (woocommerce pres…[0m
+
+[1mTables to empty in the copy[0m[2m · 3 tables[0m
+  wp_actionscheduler_logs  [2mbackground job logs[0m
+  wp_woocommerce_api_keys  [2mREST API credentials of the live store[0m
+  wp_woocommerce_sessions  [2mcarts and checkout details of live visitors[0m
+
+[1mRelationships:[0m 0 declared, 26 inferred (23 confirmed, 0 likely, 0 weak, 3 not
+  checked)
+[2m5 low-confidence matches are not shown; add --verbose or see --format json.[0m
+
+[1mHow to stop each one[0m[2m · 12[0m
+  charge customers       Cancel these actions in the copy, or make sure
+                         WooCommerce Subscriptions starts in staging mode
+                         [2mwp_actionscheduler_actions ·[0m
+                         [2mwoocommerce_scheduled_subscription_payment[0m
+  send email             Point the mailer at a mail catcher such as Mailpit, or
+                         turn it off, in the copy
+                         [2mwp_options · wp_mail_smtp[0m
+  take live payments     Switch the gateway to test or sandbox mode and remove
+                         the live keys in the copy
+                         [2mwp_options · woocommerce_stripe_settings[0m
+  post to webhooks       Set status to 'disabled' (or delete the rows) in the
+                         copy
+                         [2mwp_wc_webhooks[0m
+  upload backups         Remove the remote storage in UpdraftPlus's settings in
+                         the copy, or turn its backup schedule off
+                         [2mwp_options · updraft_service[0m
+  email members          Turn these emails off in WooCommerce > Settings >
+                         Emails in the copy, or route mail to a catcher such as
+                         Mailpit
+                         [2mwp_options[0m
+  act as the live site   Disconnect the copy: delete the blog token in
+                         jetpack_private_options and the auth entry in
+                         woocommerce_helper_data, or define JETPACK_STAGING_MODE
+                         in its wp-config.php
+                         [2mwp_options[0m
+  run scheduled actions  Cancel pending actions in the copy, or turn off WP-Cron
+                         and Action Scheduler there
+                         [2mwp_actionscheduler_actions[0m
+  run cron events        Turn cron off on the copy's host (DISABLE_WP_CRON stops
+                         runs on page loads, not a system cron), and change the
+                         plugins' own settings, since they schedule their events
+                         again
+                         [2mwp_options · cron[0m
+  email store staff      Set these emails to off in WooCommerce > Settings >
+                         Emails in the copy, or route mail to a catcher such as
+                         Mailpit
+                         [2mwp_options · woocommerce_new_order_settings[0m
+  email staff            Point these settings at a test address, or route mail
+                         to a catcher such as Mailpit, in the copy
+                         [2mwp_options[0m
+  email form recipients  Route mail to a catcher such as Mailpit in the copy, or
+                         add demo_mode: on to each form's Additional Settings
+                         [2mwp_postmeta · _mail[0m
+
+[1mWhat a plain copy of this database would carry into staging[0m[2m · 157 findings[0m
+  [1;91mCRITICAL[0m    7  secret, key or token (7)
+  [31mHIGH    [0m   59  email address (24) · secret, key or token (13) · 5 more
+  [33mMEDIUM  [0m   69  person name (20) · IP address (11) · city (7) · 8 more
+  [36mLOW     [0m   22  country (8) · card details (4) · region or state (4) · 2 more
+
+[1mWhat staging could do to real people[0m[2m · 12[0m
+  [1;91mCRITICAL[0m  charge customers       6 subscription renewal payments are scheduled
+  [31mHIGH    [0m  send email             Outgoing email is sent through WP Mail SMTP
+                                   (mailer: sendgrid)
+  [31mHIGH    [0m  take live payments     Payment gateway "stripe" is enabled in live
+                                   mode
+  [31mHIGH    [0m  post to webhooks       2 active webhooks would send order and
+                                   customer data from staging to their delivery
+                                   URLs
+  [31mHIGH    [0m  upload backups         UpdraftPlus backups are scheduled and go to
+                                   Amazon S3
+  [31mHIGH    [0m  email members          2 WooCommerce Memberships emails are enabled
+  [31mHIGH    [0m  act as the live site   The copy keeps the live site's Jetpack
+                                   connection; connected services would act for
+                                   the live site, and WooCommerce Shipping, Tax
+                                   or Payments are active
+  [33mMEDIUM  [0m  run scheduled actions  40 pending scheduled actions would run on
+                                   staging
+  [33mMEDIUM  [0m  run cron events        5 WP-Cron events would run on staging,
+                                   including UpdraftPlus backups, WPForms email
+                                   summaries, WooCommerce usage tracking and
+                                   Ultimate Member jobs
+  [33mMEDIUM  [0m  email store staff      WooCommerce emails store staff about new and
+                                   cancelled orders
+  [33mMEDIUM  [0m  email staff            1 plugin setting sends notification emails to
+                                   staff addresses (for example
+                                   fixture_admin_recipient)
+  [33mMEDIUM  [0m  email form recipients  1 Contact Form 7 form emails its submissions
+                                   to the addresses in its settings
+
+[2mAdd --config-out prodmask.yml to write a starter masking config from these[0m
+  [2mfindings.[0m
+[2mprodmask Pro copies this database with the real shape and fake customers:[0m
+  [2mhttps://prodmask.com[0m

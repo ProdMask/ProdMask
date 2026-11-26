@@ -140,10 +140,12 @@ func (e *env) wordpressCron(prefixes []string, base string) {
 	if people {
 		sev = model.SeverityMedium
 	}
+	lead := fmt.Sprintf("%s%s%s would run on staging%s",
+		atLeast, count(total, "WP-Cron event", "WP-Cron events"), sites(siteCount), including)
+	rest := fmt.Sprintf(" (most common: %s)", topHooks(byHook, 3))
 	e.sideEffect(model.SideEffect{
-		Platform: wp, Kind: "scheduled_jobs", Table: table, Item: "cron", Severity: sev, Count: int64(total),
-		Summary: fmt.Sprintf("%s%s%s would run on staging%s (most common: %s)",
-			atLeast, count(total, "WP-Cron event", "WP-Cron events"), sites(siteCount), including, topHooks(byHook, 3)),
+		Platform: wp, Kind: "scheduled_jobs", Label: "run cron events", Table: table, Item: "cron", Severity: sev,
+		Count: int64(total), Lead: lead, Summary: lead + rest,
 		Fix: "Turn cron off on the copy's host (DISABLE_WP_CRON stops runs on page loads, not a system cron), " +
 			"and change the plugins' own settings, since they schedule their events again",
 	})
@@ -196,10 +198,12 @@ func (e *env) updraftBackups(table string, services []string) {
 		}
 	}
 	sort.Strings(labels)
+	lead := fmt.Sprintf("UpdraftPlus backups are scheduled and go to %s", joinAnd(labels))
+	rest := "; staging would send its backups there too"
 	e.sideEffect(model.SideEffect{
-		Platform: wp, Kind: "backups", Table: table, Item: "updraft_service", Severity: model.SeverityHigh,
-		Summary: fmt.Sprintf("UpdraftPlus backups are scheduled and go to %s; staging would send its backups there too", joinAnd(labels)),
-		Fix:     "Remove the remote storage in UpdraftPlus's settings in the copy, or turn its backup schedule off",
+		Platform: wp, Kind: "backups", Label: "upload backups", Table: table, Item: "updraft_service",
+		Severity: model.SeverityHigh, Lead: lead, Summary: lead + rest,
+		Fix: "Remove the remote storage in UpdraftPlus's settings in the copy, or turn its backup schedule off",
 	})
 }
 
@@ -249,10 +253,12 @@ func (e *env) wooStaffEmails(shops []string) {
 			kinds = append(kinds, m.label)
 		}
 	}
+	lead := fmt.Sprintf("WooCommerce emails store staff about %s orders%s", joinAnd(kinds), sites(siteCount))
+	rest := "; staging would email them too"
 	e.sideEffect(model.SideEffect{
-		Platform: wc, Kind: "email", Table: table, Item: item, Severity: model.SeverityMedium,
-		Summary: fmt.Sprintf("WooCommerce emails store staff about %s orders%s; staging would email them too", joinAnd(kinds), sites(siteCount)),
-		Fix:     "Set these emails to off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit",
+		Platform: wc, Kind: "email", Label: "email store staff", Table: table, Item: item,
+		Severity: model.SeverityMedium, Lead: lead, Summary: lead + rest,
+		Fix: "Set these emails to off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit",
 	})
 }
 
@@ -311,10 +317,11 @@ func (e *env) recipientSettings(prefixes []string) {
 	if atLeast {
 		most = "at least "
 	}
+	lead := fmt.Sprintf("%s%s%s %s notification emails to staff addresses (for example %s)",
+		most, count(found, "plugin setting", "plugin settings"), sites(siteCount), verb(found, "sends", "send"), strings.Join(shown, ", "))
 	e.sideEffect(model.SideEffect{
-		Platform: wp, Kind: "email", Table: table, Severity: model.SeverityMedium, Count: int64(found),
-		Summary: fmt.Sprintf("%s%s%s %s notification emails to staff addresses (for example %s)",
-			most, count(found, "plugin setting", "plugin settings"), sites(siteCount), verb(found, "sends", "send"), strings.Join(shown, ", ")),
+		Platform: wp, Kind: "email", Label: "email staff", Table: table, Severity: model.SeverityMedium,
+		Count: int64(found), Lead: lead, Summary: lead,
 		Fix: "Point these settings at a test address, or route mail to a catcher such as Mailpit, in the copy",
 	})
 }
@@ -354,10 +361,11 @@ func (e *env) contactForm7(prefixes []string) {
 	if total == 0 {
 		return
 	}
+	lead := fmt.Sprintf("%s%s %s", count(total, "Contact Form 7 form", "Contact Form 7 forms"), sites(siteCount),
+		verb(total, "emails its submissions to the addresses in its settings", "email their submissions to the addresses in their settings"))
 	e.sideEffect(model.SideEffect{
-		Platform: wp, Kind: "email", Table: table, Item: "_mail", Severity: model.SeverityMedium, Count: int64(total),
-		Summary: fmt.Sprintf("%s%s %s", count(total, "Contact Form 7 form", "Contact Form 7 forms"), sites(siteCount),
-			verb(total, "emails its submissions to the addresses in its settings", "email their submissions to the addresses in their settings")),
+		Platform: wp, Kind: "email", Label: "email form recipients", Table: table, Item: "_mail",
+		Severity: model.SeverityMedium, Count: int64(total), Lead: lead, Summary: lead,
 		Fix: "Route mail to a catcher such as Mailpit in the copy, or add demo_mode: on to each form's Additional Settings",
 	})
 }
@@ -399,11 +407,12 @@ func (e *env) membershipEmails(shops []string) {
 	if total == 0 {
 		return
 	}
+	lead := fmt.Sprintf("%s %s enabled%s",
+		count(total, "WooCommerce Memberships email", "WooCommerce Memberships emails"), verb(total, "is", "are"), sites(siteCount))
+	rest := fmt.Sprintf("; staging would send %s to members, for example when a membership ends", verb(total, "it", "them"))
 	e.sideEffect(model.SideEffect{
-		Platform: wc, Kind: "email", Table: table, Severity: model.SeverityHigh, Count: int64(total),
-		Summary: fmt.Sprintf("%s %s enabled%s; staging would send %s to members, for example when a membership ends",
-			count(total, "WooCommerce Memberships email", "WooCommerce Memberships emails"), verb(total, "is", "are"),
-			sites(siteCount), verb(total, "it", "them")),
+		Platform: wc, Kind: "email", Label: "email members", Table: table, Severity: model.SeverityHigh,
+		Count: int64(total), Lead: lead, Summary: lead + rest,
 		Fix: "Turn these emails off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit",
 	})
 }
@@ -452,14 +461,17 @@ func (e *env) connections(prefixes []string, base string, shops []string) {
 	if len(shops) > 0 {
 		platform = wc
 	}
-	summary := fmt.Sprintf("The copy keeps the live site's %s connection%s; connected services would act for the live site",
-		joinAnd(what), sites(siteCount))
+	lead := fmt.Sprintf("The copy keeps the live site's %s connection%s", joinAnd(what), sites(siteCount))
+	rest := "; connected services would act for the live site"
 	if services {
+		// The services are what make the row high, so the terminal shows
+		// the whole sentence.
 		sev = model.SeverityHigh
-		summary += ", and WooCommerce Shipping, Tax or Payments are active"
+		lead, rest = lead+rest+", and WooCommerce Shipping, Tax or Payments are active", ""
 	}
 	e.sideEffect(model.SideEffect{
-		Platform: platform, Kind: "connection", Table: table, Severity: sev, Summary: summary,
+		Platform: platform, Kind: "connection", Label: "act as the live site", Table: table, Severity: sev,
+		Lead: lead, Summary: lead + rest,
 		Fix: "Disconnect the copy: delete the blog token in jetpack_private_options and the auth entry in woocommerce_helper_data, " +
 			"or define JETPACK_STAGING_MODE in its wp-config.php",
 	})
@@ -482,10 +494,11 @@ func (e *env) networkMail(base string) {
 		if !ok || strings.TrimSpace(raw) == "" {
 			continue
 		}
+		lead := "Outgoing email of the whole network is sent through " + m.label
 		e.sideEffect(model.SideEffect{
-			Platform: wp, Kind: "email", Table: t, Item: m.option, Severity: model.SeverityHigh,
-			Summary: "Outgoing email of the whole network is sent through " + m.label,
-			Fix:     "Point the mailer at a mail catcher such as Mailpit, or turn it off, in the copy",
+			Platform: wp, Kind: "email", Label: "send email", Table: t, Item: m.option, Severity: model.SeverityHigh,
+			Lead: lead, Summary: lead,
+			Fix: "Point the mailer at a mail catcher such as Mailpit, or turn it off, in the copy",
 		})
 		if meta := e.res.Meta[t]; meta != nil {
 			meta.Probe = append(meta.Probe, m.option)

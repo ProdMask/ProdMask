@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -43,6 +44,12 @@ type Env struct {
 	// Stdin is what prodmask mcp reads its messages from; nil means
 	// os.Stdin.
 	Stdin io.Reader
+	// Getenv is what scan reads $COLUMNS through, for the text report's
+	// width; nil means os.Getenv. The other variables come from os.Getenv.
+	Getenv func(string) string
+	// TermWidth reports the width of the terminal f is, or 0 when it isn't
+	// one or the OS doesn't say; nil means the OS's own answer.
+	TermWidth func(f *os.File) int
 }
 
 // App is one build of prodmask: its version, the text around its command

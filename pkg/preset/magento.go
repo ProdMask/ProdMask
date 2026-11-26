@@ -173,10 +173,11 @@ func (e *env) magentoPayments(p string) {
 			continue
 		}
 		if live, known := liveMode(kv); known && live {
+			lead := fmt.Sprintf("Payment method %q is active in live mode", detect.ShowKey(m))
 			e.sideEffect(model.SideEffect{
-				Platform: mg, Kind: "payments", Table: cfg, Item: "payment/" + detect.ShowKey(m), Severity: model.SeverityHigh,
-				Summary: fmt.Sprintf("Payment method %q is active in live mode", detect.ShowKey(m)),
-				Fix:     "Switch it to sandbox or test mode and replace the live credentials in the copy",
+				Platform: mg, Kind: "payments", Label: "take live payments", Table: cfg, Item: "payment/" + detect.ShowKey(m),
+				Severity: model.SeverityHigh, Lead: lead, Summary: lead,
+				Fix: "Switch it to sandbox or test mode and replace the live credentials in the copy",
 			})
 		}
 	}
@@ -186,10 +187,11 @@ func (e *env) magentoEmail(p string) {
 	cfg := p + "core_config_data"
 	opts, err := e.rows("SELECT value FROM "+sample.QuoteIdent(cfg)+" WHERE path = ? AND scope = 'default'", "system/smtp/disable")
 	if err == nil && (len(opts) == 0 || !yes(opts[0][0])) {
+		lead := "Email sending is on (system/smtp/disable is not set)"
 		e.sideEffect(model.SideEffect{
-			Platform: mg, Kind: "email", Table: cfg, Item: "system/smtp/disable", Severity: model.SeverityMedium,
-			Summary: "Email sending is on (system/smtp/disable is not set)",
-			Fix:     "Set system/smtp/disable to 1 in the copy, or route mail to a catcher such as Mailpit",
+			Platform: mg, Kind: "email", Label: "send email", Table: cfg, Item: "system/smtp/disable",
+			Severity: model.SeverityMedium, Lead: lead, Summary: lead,
+			Fix: "Set system/smtp/disable to 1 in the copy, or route mail to a catcher such as Mailpit",
 		})
 	}
 	orders := p + "sales_order"
@@ -198,10 +200,12 @@ func (e *env) magentoEmail(p string) {
 		if err != nil {
 			e.warn(fmt.Sprintf("could not count queued order emails: %s", dbconn.ErrorText(err)))
 		} else if n > 0 {
+			// The whole sentence: "with asynchronous sending" says when they go.
+			lead := fmt.Sprintf("%d order emails are queued; with asynchronous sending, staging cron would send them to customers", n)
 			e.sideEffect(model.SideEffect{
-				Platform: mg, Kind: "email", Table: orders, Severity: model.SeverityHigh, Count: n,
-				Summary: fmt.Sprintf("%d order emails are queued; with asynchronous sending, staging cron would send them to customers", n),
-				Fix:     "Set send_email = 0 on unsent orders in the copy",
+				Platform: mg, Kind: "email", Label: "email customers", Table: orders, Severity: model.SeverityHigh,
+				Count: n, Lead: lead, Summary: lead,
+				Fix: "Set send_email = 0 on unsent orders in the copy",
 			})
 		}
 	}
@@ -218,9 +222,11 @@ func (e *env) magentoCron(p string) {
 		return
 	}
 	rows, _ := e.rows("SELECT job_code, COUNT(*) FROM " + q + " WHERE status = 'pending' GROUP BY job_code ORDER BY COUNT(*) DESC LIMIT 5")
+	lead := fmt.Sprintf("%d pending cron jobs would run on staging", total)
+	rest := fmt.Sprintf(" (most common: %s)", topCounts(rows, 3))
 	e.sideEffect(model.SideEffect{
-		Platform: mg, Kind: "scheduled_jobs", Table: t, Severity: model.SeverityMedium, Count: total,
-		Summary: fmt.Sprintf("%d pending cron jobs would run on staging (most common: %s)", total, topCounts(rows, 3)),
-		Fix:     "Empty cron_schedule in the copy and keep cron off until the copy is checked",
+		Platform: mg, Kind: "scheduled_jobs", Label: "run cron jobs", Table: t, Severity: model.SeverityMedium,
+		Count: total, Lead: lead, Summary: lead + rest,
+		Fix: "Empty cron_schedule in the copy and keep cron off until the copy is checked",
 	})
 }

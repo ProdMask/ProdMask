@@ -261,10 +261,11 @@ func (e *env) wordpressMail(p string) {
 		if mailer := detect.Flatten(raw)["mail.mailer"]; mailer != "" {
 			detail = " (mailer: " + Safe(mailer) + ")"
 		}
+		lead := "Outgoing email is sent through " + m.label + detail
 		e.sideEffect(model.SideEffect{
-			Platform: wp, Kind: "email", Table: p + "options", Item: m.option, Severity: model.SeverityHigh,
-			Summary: "Outgoing email is sent through " + m.label + detail,
-			Fix:     "Point the mailer at a mail catcher such as Mailpit, or turn it off, in the copy",
+			Platform: wp, Kind: "email", Label: "send email", Table: p + "options", Item: m.option,
+			Severity: model.SeverityHigh, Lead: lead, Summary: lead,
+			Fix: "Point the mailer at a mail catcher such as Mailpit, or turn it off, in the copy",
 		})
 		if meta := e.res.Meta[p+"options"]; meta != nil {
 			meta.Probe = append(meta.Probe, m.option)
@@ -401,10 +402,11 @@ func (e *env) wooGateways(p string) {
 			continue
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(name, "woocommerce_"), "_settings")
+		lead := fmt.Sprintf("Payment gateway %q is enabled in live mode", detect.ShowKey(id))
 		e.sideEffect(model.SideEffect{
-			Platform: wc, Kind: "payments", Table: opts, Item: detect.ShowKey(name), Severity: model.SeverityHigh,
-			Summary: fmt.Sprintf("Payment gateway %q is enabled in live mode", detect.ShowKey(id)),
-			Fix:     "Switch the gateway to test or sandbox mode and remove the live keys in the copy",
+			Platform: wc, Kind: "payments", Label: "take live payments", Table: opts, Item: detect.ShowKey(name),
+			Severity: model.SeverityHigh, Lead: lead, Summary: lead,
+			Fix: "Switch the gateway to test or sandbox mode and remove the live keys in the copy",
 		})
 	}
 }
@@ -420,10 +422,11 @@ func (e *env) wooWebhooks(p string) {
 		return
 	}
 	if n > 0 {
+		lead := fmt.Sprintf("%d active webhooks would send order and customer data from staging to their delivery URLs", n)
 		e.sideEffect(model.SideEffect{
-			Platform: wc, Kind: "webhooks", Table: t, Severity: model.SeverityHigh, Count: n,
-			Summary: fmt.Sprintf("%d active webhooks would send order and customer data from staging to their delivery URLs", n),
-			Fix:     "Set status to 'disabled' (or delete the rows) in the copy",
+			Platform: wc, Kind: "webhooks", Label: "post to webhooks", Table: t, Severity: model.SeverityHigh,
+			Count: n, Lead: lead, Summary: lead,
+			Fix: "Set status to 'disabled' (or delete the rows) in the copy",
 		})
 	}
 }
@@ -448,18 +451,21 @@ func (e *env) actionScheduler(p string) {
 	}
 	for _, r := range rows {
 		if strings.Contains(r[0], "scheduled_subscription_payment") {
+			lead := fmt.Sprintf("%s subscription renewal payments are scheduled", r[1])
+			rest := "; staging would try to charge customers when they fall due"
 			e.sideEffect(model.SideEffect{
-				Platform: wc, Kind: "payments", Table: t, Item: detect.ShowKey(r[0]), Severity: model.SeverityCritical,
-				Count:   parseCount(r[1]),
-				Summary: fmt.Sprintf("%s subscription renewal payments are scheduled; staging would try to charge customers when they fall due", r[1]),
-				Fix:     "Cancel these actions in the copy, or make sure WooCommerce Subscriptions starts in staging mode",
+				Platform: wc, Kind: "payments", Label: "charge customers", Table: t, Item: detect.ShowKey(r[0]),
+				Severity: model.SeverityCritical, Count: parseCount(r[1]), Lead: lead, Summary: lead + rest,
+				Fix: "Cancel these actions in the copy, or make sure WooCommerce Subscriptions starts in staging mode",
 			})
 		}
 	}
+	lead := fmt.Sprintf("%d pending scheduled actions would run on staging", total)
+	rest := fmt.Sprintf(" (most common: %s)", topCounts(rows, 3))
 	e.sideEffect(model.SideEffect{
-		Platform: wc, Kind: "scheduled_jobs", Table: t, Severity: model.SeverityMedium, Count: total,
-		Summary: fmt.Sprintf("%d pending scheduled actions would run on staging (most common: %s)", total, topCounts(rows, 3)),
-		Fix:     "Cancel pending actions in the copy, or turn off WP-Cron and Action Scheduler there",
+		Platform: wc, Kind: "scheduled_jobs", Label: "run scheduled actions", Table: t, Severity: model.SeverityMedium,
+		Count: total, Lead: lead, Summary: lead + rest,
+		Fix: "Cancel pending actions in the copy, or turn off WP-Cron and Action Scheduler there",
 	})
 }
 

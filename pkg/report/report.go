@@ -15,13 +15,14 @@ import (
 	"github.com/ProdMask/ProdMask/pkg/model"
 )
 
-// Headline is the question every report answers first.
+// Headline is the question every report answers. The text report prints it
+// over the summary at its end.
 const Headline = "What a plain copy of this database would carry into staging"
 
 // proLine ends the free build's text and Markdown reports: one line about
 // the paid product, with a plain link and no tracking. A build with an
-// edition prints none.
-const proLine = "prodmask Pro makes copies of this database with the real shape and fake customers: https://prodmask.com"
+// edition prints none. It fits on one line of a 100-column terminal.
+const proLine = "prodmask Pro copies this database with the real shape and fake customers: https://prodmask.com"
 
 // toolName is how a report names the build that wrote it: "prodmask 1.2.3",
 // or with an edition "prodmask Pro 1.2.3", whose version drops its semver

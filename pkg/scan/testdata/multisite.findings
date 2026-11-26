@@ -1,6 +1,7 @@
 wp_2_options	option_value	fixture_a_recipient			email	high	high	fake_email
 wp_2_options	option_value	fixture_admin_recipient			email	high	high	fake_email
 wp_2_options	option_value	fixture_b_recipient			email	high	high	fake_email
+wp_2_options	option_value	jetpack_private_options	blog_token		secret	high	medium	null
 wp_2_posts	post_password				secret	medium	high	keep
 wp_options	option_value	fixture_admin_recipient			email	high	high	fake_email
 wp_posts	post_password				secret	low	high	keep

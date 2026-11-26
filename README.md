@@ -139,7 +139,7 @@ With no DSN at all, the scan names a config it finds in the current folder.
 | `--meta-sample-rows` | 3000 | rows sampled from a key/value table such as `wp_postmeta` that is too big to read whole (see below) |
 | `--no-samples` | | judge column names only and sample no rows; the platform checks still read settings rows, unless `--preset none` |
 | `--timeout` | `10s` | server-side limit for each statement |
-| `--verbose` | | also list low-confidence matches, inferred relationships and full evidence |
+| `--verbose` | | also list low-confidence matches and inferred relationships, and the evidence, kinds of data and side-effect sentences the report otherwise shortens |
 
 Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above `--fail-on`.
 
@@ -319,7 +319,7 @@ PRODMASK_TEST_DSN='root:…@tcp(127.0.0.1:3306)/' go test ./...
 
 With `PRODMASK_TEST_REQUIRE_ALL=1` as well (any value but `0` counts), a test that needs a server fails instead of skipping when `PRODMASK_TEST_DSN` isn't set.
 
-Their findings are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line.
+Their findings and side effects are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line. The reports have golden files of their own in `pkg/report/testdata`, which `go test ./pkg/report -update` rewrites with no server.
 
 The scanner engine lives in importable packages under `github.com/ProdMask/ProdMask/pkg/...`. The command line is `pkg/cli`, which other builds can add commands to; `cmd/prodmask` is a thin main on top.
 

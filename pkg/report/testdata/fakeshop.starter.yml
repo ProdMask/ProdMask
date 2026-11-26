@@ -1,0 +1,413 @@
+# prodmask starter config
+# Written by prodmask 0.14.0 on 2026-11-25 from a scan of shop (mariadb 11.8.9-MariaDB).
+# It is a starting point, not a guarantee: review every rule, and rescan after schema changes.
+# Lines starting with "# " are weak matches or suggestions, such as emptying a table that looks like a cache;
+# uncomment the ones that are real, with their table's name line.
+# In keys and in path segments alike, * stands for one or more characters that vary, such as a user ID.
+# A path segment that is exactly * stands for the keys at that level that aren't plain names (hashes, labels
+# with spaces, data); plain-named keys beside them keep their own rules. Stored keys never contain *.
+# An exact key wins over a pattern, more fixed characters win over fewer, and on a tie the first one here wins.
+# In paths, [] stands for each item of a list or numeric key of a map (such as a timestamp), and {} (always
+# last) for the keys of a map whose keys are data, such as email or IP addresses.
+# name: rewrites the part of a key's name that holds personal data; mask: masks its value.
+# Masking strategies: keep, null, empty, hash, delete, redact, fake_email, fake_phone, fake_name, fake_first_name, fake_last_name, fake_username, fake_street, fake_postcode, fake_city, fake_company, fake_iban, fake_ip, fake_user_agent, fake_date, test_card, fake_number, staging_password
+version: 1
+database: shop
+platforms: [wordpress, woocommerce]
+
+tables:
+  wp_actionscheduler_logs:
+    action: truncate  # background job logs
+    columns:
+      # message: redact  # free text with personal data, low confidence; no personal data spotted in the sampled text
+  wp_commentmeta:
+    key_column: meta_key
+    value_column: meta_value
+    keys:
+      akismet_as_submitted:
+        paths:
+          comment_author: fake_name  # person name, medium confidence
+          comment_author_email: fake_email  # email address, high confidence
+          comment_author_url: "null"  # personal website, medium confidence
+          comment_content: redact  # free text with personal data, medium confidence
+          user_agent: fake_user_agent  # user agent, high confidence
+          user_ip: fake_ip  # IP address, high confidence
+  wp_comments:
+    columns:
+      comment_agent: fake_user_agent  # user agent, high confidence
+      comment_author: fake_name  # person name, medium confidence
+      comment_author_IP: fake_ip  # IP address, high confidence
+      comment_author_email: fake_email  # email address, high confidence
+      comment_author_url: "null"  # personal website, medium confidence
+      comment_content: redact  # free text with personal data, medium confidence
+  wp_options:
+    key_column: option_name
+    value_column: option_value
+    keys:
+      # _transient_fixture_customer_email: delete  # email address, low confidence; sampled values don't match the email address format; a transient: cached data WordPress rebuilds
+      admin_email: fake_email  # email address, high confidence; site administrator
+      as3cf_settings:
+        paths:
+          access-key-id: "null"  # secret, key or token, high confidence
+      fixture_admin_recipient: fake_email  # email address, high confidence
+      fixture_hashids_salt: "null"  # secret, key or token, medium confidence
+      jetpack_private_options:
+        paths:
+          blog_token: "null"  # secret, key or token, medium confidence
+      limit_login_lockouts:
+        paths:
+          "{}": fake_ip  # IP address, medium confidence
+      limit_login_logged:
+        paths:
+          "{}": fake_ip  # IP address, medium confidence
+      limit_login_retries:
+        paths:
+          "{}": fake_ip  # IP address, medium confidence
+      limit_login_retries_valid:
+        paths:
+          "{}": fake_ip  # IP address, medium confidence
+      logged_in_salt: "null"  # secret, key or token, high confidence; authentication key or salt; a copy that keeps it trusts production login cookies
+      rank-math-options-titles:
+        paths:
+          facebook_secret: "null"  # secret, key or token, medium confidence
+      secret_key: "null"  # secret, key or token, high confidence; authentication key or salt; a copy that keeps it trusts production login cookies
+      "um_cache_userdata_*": delete  # email address, high confidence; 60 keys; Ultimate Member's per-user profile cache, password hash included; the plugin rebuilds it
+      woocommerce_cancelled_order_settings:
+        paths:
+          recipient: fake_email  # email address, high confidence
+      # woocommerce_eu_vat_number_validate: hash  # national or tax ID, low confidence; sampled values are all on/off flags
+      woocommerce_new_order_settings:
+        paths:
+          recipient: fake_email  # email address, high confidence
+      woocommerce_paypal_settings:
+        paths:
+          api_password: "null"  # secret, key or token, high confidence; a copy hands out working passwords
+          api_signature: "null"  # secret, key or token, medium confidence
+          api_username: fake_username  # username, medium confidence
+          email: fake_email  # email address, high confidence
+          sandbox_api_password: "null"  # secret, key or token, high confidence; a copy hands out working passwords
+      woocommerce_stripe_settings:
+        paths:
+          secret_key: "null"  # secret, key or token, high confidence
+          test_secret_key: "null"  # secret, key or token, high confidence; test-mode keys only
+          webhook_secret: "null"  # secret, key or token, high confidence
+      wp_mail_smtp:
+        paths:
+          mail.from_email: fake_email  # email address, high confidence
+          sendgrid.api_key: "null"  # secret, key or token, high confidence
+      wp_mail_smtp_mail_key: "null"  # secret, key or token, high confidence; WP Mail SMTP's key; it decrypts the SMTP password it stores
+      wpgmza_temp_api: "null"  # secret, key or token, high confidence
+  wp_postmeta:
+    key_column: meta_key
+    value_column: meta_value
+    keys:
+      _bbp_author_ip: fake_ip  # IP address, high confidence
+      _billing_address_1: fake_street  # street address, medium confidence
+      _billing_address_index: "null"  # street address, high confidence; search index of the full address, email and phone; WooCommerce rebuilds it
+      _billing_city: fake_city  # city, medium confidence
+      _billing_company: fake_company  # company name, medium confidence
+      _billing_country: keep  # country, medium confidence
+      _billing_email: fake_email  # email address, high confidence
+      _billing_first_name: fake_first_name  # person name, medium confidence
+      _billing_last_name: fake_last_name  # person name, medium confidence
+      _billing_phone: fake_phone  # phone number, high confidence
+      _billing_postcode: fake_postcode  # postcode, medium confidence
+      _billing_state: keep  # region or state, medium confidence
+      _customer_ip_address: fake_ip  # IP address, high confidence
+      _customer_user_agent: fake_user_agent  # user agent, high confidence
+      _mail:
+        paths:
+          recipient: fake_email  # email address, high confidence
+          sender: redact  # free text with personal data, high confidence
+      _order_key: "null"  # secret, key or token, high confidence; anyone with this key in a link can view the order
+      _shipping_address_1: fake_street  # street address, medium confidence
+      _shipping_address_index: "null"  # street address, high confidence; search index of the full address, email and phone; WooCommerce rebuilds it
+      _shipping_city: fake_city  # city, medium confidence
+      _shipping_country: keep  # country, medium confidence
+      _shipping_first_name: fake_first_name  # person name, medium confidence
+      _shipping_last_name: fake_last_name  # person name, medium confidence
+      _shipping_postcode: fake_postcode  # postcode, medium confidence
+      _stripe_customer_id: "null"  # payment token or ID, medium confidence
+      _stripe_source_id: "null"  # payment token or ID, medium confidence
+      _transaction_id: "null"  # payment token or ID, high confidence
+      customer_email:
+        paths:
+          "[]": fake_email  # email address, high confidence
+  wp_posts:
+    columns:
+      # post_content: redact  # free text with personal data, low confidence
+      post_password:
+        mask: keep  # secret, key or token, high confidence; WordPress post passwords in plain text, and the key of each order stored as a post
+        rows:  # for the rows that match, these replace the mask above
+          - where: "post_type = 'user_request'"
+            mask: "null"  # the hashed confirmation key of a privacy request
+          - where: "post_type IN ('shop_order', 'shop_order_refund', 'shop_order_placehold', 'shop_subscription')"
+            mask: "null"  # WooCommerce order keys; anyone with one in a link can view the order
+      post_title:
+        rows:  # for the rows that match; the other rows keep their values
+          - where: "post_type = 'user_request'"
+            mask: fake_email  # email address, high confidence; privacy requests keep the requester's email address in the title
+  wp_um_metadata:
+    key_column: um_key
+    value_column: um_value
+    keys:
+      mobile_number: fake_phone  # phone number, high confidence
+  wp_usermeta:
+    key_column: meta_key
+    value_column: meta_value
+    keys:
+      billing_address_1: fake_street  # street address, medium confidence
+      billing_city: fake_city  # city, medium confidence
+      billing_company: fake_company  # company name, medium confidence
+      billing_country: keep  # country, medium confidence
+      billing_email: fake_email  # email address, high confidence
+      billing_first_name: fake_first_name  # person name, medium confidence
+      billing_last_name: fake_last_name  # person name, medium confidence
+      billing_phone: fake_phone  # phone number, high confidence
+      billing_postcode: fake_postcode  # postcode, medium confidence
+      billing_state: keep  # region or state, medium confidence
+      community-events-location:
+        mask: "null"  # geolocation, high confidence; IP address and city saved by the dashboard events widget
+        paths:
+          country: keep  # country, medium confidence
+          ip: fake_ip  # IP address, high confidence
+          latitude: "null"  # geolocation, medium confidence
+          longitude: "null"  # geolocation, medium confidence
+      description: redact  # free text with personal data, medium confidence; user biography
+      first_name: fake_first_name  # person name, medium confidence
+      last_name: fake_last_name  # person name, medium confidence
+      nickname: fake_name  # person name, medium confidence
+      session_tokens:
+        mask: delete  # secret, key or token, high confidence; login sessions, with IP addresses and user agents
+        paths:
+          "*.ip": fake_ip  # IP address, high confidence
+          "*.ua": fake_user_agent  # user agent, high confidence
+      shipping_address_1: fake_street  # street address, medium confidence
+      shipping_city: fake_city  # city, medium confidence
+      shipping_country: keep  # country, medium confidence
+      shipping_first_name: fake_first_name  # person name, medium confidence
+      shipping_last_name: fake_last_name  # person name, medium confidence
+      shipping_postcode: fake_postcode  # postcode, medium confidence
+      "um_email_as_username_*":
+        name: fake_email  # email address in the key name, high confidence; 6 keys; the key names hold personal data; a copy must rewrite them too
+        mask: fake_email  # email address, high confidence; 6 keys
+  wp_users:
+    columns:
+      display_name: fake_name  # email address, medium confidence; also person name; 10 of 60 values are email addresses; keep them email-shaped when masking
+      user_activation_key: "null"  # secret, key or token, high confidence; password reset key
+      user_email: fake_email  # email address, high confidence
+      user_login: fake_username  # email address, medium confidence; also username; 10 of 60 values are email addresses; keep them email-shaped when masking
+      user_nicename: fake_username  # email address, medium confidence; also username; 10 of 60 values are email addresses; keep them email-shaped when masking
+      user_pass: staging_password  # password hash, high confidence
+      user_url: redact  # free text with personal data, medium confidence; also personal website
+  wp_wc_customer_lookup:
+    columns:
+      city: fake_city  # city, medium confidence
+      country: keep  # country, medium confidence
+      email: fake_email  # email address, high confidence
+      first_name: fake_first_name  # person name, medium confidence
+      last_name: fake_last_name  # person name, medium confidence
+      postcode: fake_postcode  # postcode, medium confidence
+      state: keep  # region or state, high confidence
+      username: fake_username  # username, medium confidence
+  wp_wc_order_addresses:
+    columns:
+      address_1: fake_street  # street address, medium confidence
+      address_2: fake_street  # street address, medium confidence; no non-empty values in the sample
+      city: fake_city  # city, medium confidence
+      company: fake_company  # company name, medium confidence
+      country: keep  # country, medium confidence
+      email: fake_email  # email address, high confidence
+      first_name: fake_first_name  # person name, medium confidence
+      last_name: fake_last_name  # person name, medium confidence
+      phone: fake_phone  # phone number, high confidence
+      postcode: fake_postcode  # postcode, medium confidence
+      state: keep  # region or state, high confidence
+  wp_wc_order_operational_data:
+    columns:
+      order_key: "null"  # secret, key or token, high confidence; anyone with this key in a link can view the order
+  wp_wc_orders:
+    columns:
+      billing_email: fake_email  # email address, high confidence
+      customer_note: redact  # free text with personal data, high confidence; possible card numbers typed into free text
+      ip_address: fake_ip  # IP address, high confidence
+      transaction_id: "null"  # payment token or ID, high confidence
+      user_agent: fake_user_agent  # user agent, high confidence
+  wp_wc_orders_meta:
+    key_column: meta_key
+    value_column: meta_value
+    keys:
+      _billing_address_index: "null"  # street address, high confidence; search index of the full address, email and phone; WooCommerce rebuilds it
+      _shipping_address_index: "null"  # street address, high confidence; search index of the full address, email and phone; WooCommerce rebuilds it
+      _stripe_customer_id: "null"  # payment token or ID, medium confidence
+      _wc_order_attribution_user_agent: fake_user_agent  # user agent, high confidence
+  wp_wc_webhooks:
+    columns:
+      secret: "null"  # secret, key or token, medium confidence
+  wp_woocommerce_api_keys:
+    action: truncate  # REST API credentials of the live store
+    columns:
+      consumer_key: "null"  # secret, key or token, high confidence; hashed REST API key
+      consumer_secret: "null"  # secret, key or token, high confidence; REST API secret
+  wp_woocommerce_order_itemmeta:
+    key_column: meta_key
+    value_column: meta_value
+    keys:
+      # "Gift message": redact  # free text with personal data, low confidence; no personal data spotted in the sampled text
+  wp_woocommerce_payment_tokenmeta:
+    key_column: meta_key
+    value_column: meta_value
+    keys:
+      card_type: keep  # card details, high confidence
+      expiry_month: keep  # card details, high confidence
+      expiry_year: keep  # card details, high confidence
+      last4: keep  # card details, high confidence
+  wp_woocommerce_payment_tokens:
+    columns:
+      token: "null"  # payment token or ID, high confidence; saved payment method at the gateway
+  wp_woocommerce_sessions:
+    action: truncate  # carts and checkout details of live visitors
+    columns:
+      session_value:
+        mask: "null"  # session data, high confidence; carts and checkout details of visitors
+        paths:
+          customer.address_1: fake_street  # street address, medium confidence
+          customer.city: fake_city  # city, medium confidence
+          customer.country: keep  # country, medium confidence
+          customer.email: fake_email  # email address, high confidence
+          customer.first_name: fake_first_name  # person name, medium confidence
+          customer.last_name: fake_last_name  # person name, medium confidence
+          customer.phone: fake_phone  # phone number, high confidence
+          customer.postcode: fake_postcode  # postcode, medium confidence
+
+# Links the schema does not declare. A copy follows them to keep subsets consistent.
+relationships:
+  - from: wp_actionscheduler_actions.group_id
+    to: wp_actionscheduler_groups.group_id
+    status: confirmed  # preset:woocommerce, 3 of 3 sampled values found
+  - from: wp_actionscheduler_logs.action_id
+    to: wp_actionscheduler_actions.action_id
+    status: confirmed  # preset:woocommerce, 100 of 100 sampled values found
+  - from: wp_commentmeta.comment_id
+    to: wp_comments.comment_ID
+    status: confirmed  # preset:wordpress, 100 of 100 sampled values found
+  - from: wp_comments.comment_post_ID
+    to: wp_posts.ID
+    status: confirmed  # preset:wordpress, 69 of 69 sampled values found
+  - from: wp_comments.user_id
+    to: wp_users.ID
+    status: confirmed  # preset:wordpress, 33 of 33 sampled values found
+  - from: wp_postmeta.post_id
+    to: wp_posts.ID
+    status: confirmed  # preset:wordpress, 100 of 100 sampled values found
+  - from: wp_posts.post_author
+    to: wp_users.ID
+    status: confirmed  # preset:wordpress, 5 of 5 sampled values found
+  - from: wp_term_relationships.object_id
+    to: wp_posts.ID
+    status: confirmed  # preset:wordpress, 70 of 70 sampled values found
+  - from: wp_term_relationships.term_taxonomy_id
+    to: wp_term_taxonomy.term_taxonomy_id
+    status: confirmed  # preset:wordpress, 12 of 12 sampled values found
+  - from: wp_term_taxonomy.term_id
+    to: wp_terms.term_id
+    status: confirmed  # preset:wordpress, 12 of 12 sampled values found
+  - from: wp_um_metadata.user_id
+    to: wp_users.ID
+    status: confirmed  # naming, 19 of 19 sampled values found
+  - from: wp_usermeta.user_id
+    to: wp_users.ID
+    status: confirmed  # preset:wordpress, 13 of 13 sampled values found
+  - from: wp_wc_customer_lookup.user_id
+    to: wp_users.ID
+    status: confirmed  # preset:woocommerce, 59 of 59 sampled values found
+  - from: wp_wc_order_addresses.order_id
+    to: wp_wc_orders.id
+    status: confirmed  # preset:woocommerce, 100 of 100 sampled values found
+  - from: wp_wc_order_operational_data.order_id
+    to: wp_wc_orders.id
+    status: confirmed  # preset:woocommerce, 100 of 100 sampled values found
+  - from: wp_wc_orders.customer_id
+    to: wp_users.ID
+    status: confirmed  # preset:woocommerce, 55 of 55 sampled values found
+  - from: wp_wc_orders_meta.order_id
+    to: wp_wc_orders.id
+    status: confirmed  # preset:woocommerce, 52 of 52 sampled values found
+  - from: wp_wc_webhooks.user_id
+    to: wp_users.ID
+    status: confirmed  # preset:woocommerce, 1 of 1 sampled values found
+  - from: wp_woocommerce_api_keys.user_id
+    to: wp_users.ID
+    status: confirmed  # preset:woocommerce, 1 of 1 sampled values found
+  - from: wp_woocommerce_order_itemmeta.order_item_id
+    to: wp_woocommerce_order_items.order_item_id
+    status: confirmed  # preset:woocommerce, 99 of 99 sampled values found
+  - from: wp_woocommerce_order_items.order_id
+    to: wp_wc_orders.id
+    status: confirmed  # preset:woocommerce, 100 of 100 sampled values found
+  - from: wp_woocommerce_payment_tokenmeta.payment_token_id
+    to: wp_woocommerce_payment_tokens.token_id
+    status: confirmed  # preset:woocommerce, 20 of 20 sampled values found
+  - from: wp_woocommerce_payment_tokens.user_id
+    to: wp_users.ID
+    status: confirmed  # preset:woocommerce, 19 of 19 sampled values found
+  - from: wp_comments.comment_parent
+    to: wp_comments.comment_ID
+    status: unverified  # preset:wordpress
+  - from: wp_posts.post_parent
+    to: wp_posts.ID
+    status: unverified  # preset:wordpress
+  - from: wp_wc_orders.parent_order_id
+    to: wp_wc_orders.id
+    status: unverified  # preset:woocommerce
+
+# What staging could do to real people. Apply these fixes to every copy.
+neutralise:
+  - kind: payments
+    where: "wp_actionscheduler_actions[woocommerce_scheduled_subscription_payment]"
+    why: "6 subscription renewal payments are scheduled; staging would try to charge customers when they fall due"
+    fix: "Cancel these actions in the copy, or make sure WooCommerce Subscriptions starts in staging mode"
+  - kind: email
+    where: "wp_options[wp_mail_smtp]"
+    why: "Outgoing email is sent through WP Mail SMTP (mailer: sendgrid)"
+    fix: "Point the mailer at a mail catcher such as Mailpit, or turn it off, in the copy"
+  - kind: payments
+    where: "wp_options[woocommerce_stripe_settings]"
+    why: "Payment gateway \"stripe\" is enabled in live mode"
+    fix: "Switch the gateway to test or sandbox mode and remove the live keys in the copy"
+  - kind: webhooks
+    where: wp_wc_webhooks
+    why: "2 active webhooks would send order and customer data from staging to their delivery URLs"
+    fix: "Set status to 'disabled' (or delete the rows) in the copy"
+  - kind: backups
+    where: "wp_options[updraft_service]"
+    why: "UpdraftPlus backups are scheduled and go to Amazon S3; staging would send its backups there too"
+    fix: "Remove the remote storage in UpdraftPlus's settings in the copy, or turn its backup schedule off"
+  - kind: email
+    where: wp_options
+    why: "2 WooCommerce Memberships emails are enabled; staging would send them to members, for example when a membership ends"
+    fix: "Turn these emails off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit"
+  - kind: connection
+    where: wp_options
+    why: "The copy keeps the live site's Jetpack connection; connected services would act for the live site, and WooCommerce Shipping, Tax or Payments are active"
+    fix: "Disconnect the copy: delete the blog token in jetpack_private_options and the auth entry in woocommerce_helper_data, or define JETPACK_STAGING_MODE in its wp-config.php"
+  - kind: scheduled_jobs
+    where: wp_actionscheduler_actions
+    why: "40 pending scheduled actions would run on staging (most common: woocommerce_cleanup_draft_orders (20), wc-admin_import_orders (14), woocommerce_scheduled_subscription_payment (6))"
+    fix: "Cancel pending actions in the copy, or turn off WP-Cron and Action Scheduler there"
+  - kind: scheduled_jobs
+    where: "wp_options[cron]"
+    why: "5 WP-Cron events would run on staging, including UpdraftPlus backups, WPForms email summaries, WooCommerce usage tracking and Ultimate Member jobs (most common: um_daily_scheduled_events (1), updraft_backup (1), woocommerce_tracker_send_event (1))"
+    fix: "Turn cron off on the copy's host (DISABLE_WP_CRON stops runs on page loads, not a system cron), and change the plugins' own settings, since they schedule their events again"
+  - kind: email
+    where: "wp_options[woocommerce_new_order_settings]"
+    why: "WooCommerce emails store staff about new and cancelled orders; staging would email them too"
+    fix: "Set these emails to off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit"
+  - kind: email
+    where: wp_options
+    why: "1 plugin setting sends notification emails to staff addresses (for example fixture_admin_recipient)"
+    fix: "Point these settings at a test address, or route mail to a catcher such as Mailpit, in the copy"
+  - kind: email
+    where: "wp_postmeta[_mail]"
+    why: "1 Contact Form 7 form emails its submissions to the addresses in its settings"
+    fix: "Route mail to a catcher such as Mailpit in the copy, or add demo_mode: on to each form's Additional Settings"

@@ -9,7 +9,10 @@ import (
 
 const enableVirtualTerminalProcessing = 0x0004
 
-var setConsoleMode = syscall.NewLazyDLL("kernel32.dll").NewProc("SetConsoleMode")
+// kernel32 is the DLL the console calls live in; term_windows.go uses it too.
+var kernel32 = syscall.NewLazyDLL("kernel32.dll")
+
+var setConsoleMode = kernel32.NewProc("SetConsoleMode")
 
 // enableANSI turns on escape-sequence handling in the Windows console and
 // reports whether colours will show.

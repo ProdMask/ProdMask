@@ -47,8 +47,8 @@ func runScan(ctx context.Context, env *Env, args []string) int {
 	presetName := fs.String("preset", "auto", "platform presets: auto, none, "+strings.Join(preset.Names, ", "))
 	timeout := fs.Duration("timeout", 10*time.Second, "server-side time limit for each statement")
 	failOn := fs.String("fail-on", "none", "exit with status 3 if anything at or above this severity is found:\nnone, low, medium, high or critical")
-	verbose := fs.Bool("verbose", false, "also show low-confidence matches, inferred relationships and full evidence")
-	noColor := fs.Bool("no-color", false, "plain text report without colours (also: $NO_COLOR)")
+	verbose := fs.Bool("verbose", false, "also show low-confidence matches and inferred relationships, and the evidence,\nkinds of data and side-effect sentences the report otherwise shortens")
+	noColor := fs.Bool("no-color", false, "plain text report without colours (also: $NO_COLOR); the report fits\nthe terminal's width, at most 100 columns, or $COLUMNS when set")
 	usage := `Usage: prodmask scan [flags]
 
 Scans one database without changing anything: a read-only session, a few
@@ -195,7 +195,8 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 		case "markdown", "md":
 			return report.Markdown(w, res)
 		}
-		return report.Text(w, res, report.TextOptions{Color: color, Verbose: *verbose, ConfigWritten: *configOut != ""})
+		return report.Text(w, res, report.TextOptions{Color: color, Verbose: *verbose, ConfigWritten: *configOut != "",
+			Width: textWidth(env, *out)})
 	}
 	if *out != "" {
 		err = writeFile(*out, func(w io.Writer) error { return render(w, false) })

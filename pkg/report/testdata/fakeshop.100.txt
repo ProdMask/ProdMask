@@ -1,0 +1,259 @@
+prodmask scan · shop · MariaDB 11.8.9 at 127.0.0.1:3381
+Platforms: WordPress (prefix wp_, db_version 60421) · WooCommerce 9.3.3 (prefix wp_, orders in HPOS
+  tables)
+Scanned 28 tables · 9,100 rows sampled · 278 ms
+
+Findings by table · 157 findings in 18 tables
+Evidence that didn't fit is left out; add --verbose.
+  wp_options · key/value: option_name → option_value · 252 keys · ~252 rows
+    CRITICAL  [as3cf_settings] → access-key-id                  secret, key or token  high
+    CRITICAL  [woocommerce_paypal_settings] → api_password      secret, key or token  high
+    CRITICAL  [woocommerce_stripe_settings] → secret_key        secret, key or token  high
+    CRITICAL  [woocommerce_stripe_settings] → webhook_secret    secret, key or token  high
+    CRITICAL  [wp_mail_smtp] → sendgrid.api_key                 secret, key or token  high
+    CRITICAL  [wpgmza_temp_api]                                 secret, key or token  high
+    HIGH      [admin_email]                                     email address         high
+    HIGH      [fixture_admin_recipient]                         email address         high
+    HIGH      [fixture_hashids_salt]                            secret, key or token  medium
+    HIGH      [jetpack_private_options] → blog_token            secret, key or token  medium
+    HIGH      [logged_in_salt]                                  secret, key or token  high
+    HIGH      [rank-math-options-titles] → facebook_secret      secret, key or token  medium
+    HIGH      [secret_key]                                      secret, key or token  high
+    HIGH      [um_cache_userdata_*]                             email address         high
+    HIGH      [woocommerce_cancelled_order_settings] → recipi…  email address         high
+    HIGH      [woocommerce_new_order_settings] → recipient      email address         high
+    HIGH      [woocommerce_paypal_settings] → api_signature     secret, key or token  medium
+    HIGH      [woocommerce_paypal_settings] → email             email address         high
+    HIGH      [woocommerce_paypal_settings] → sandbox_api_pas…  secret, key or token  high
+    HIGH      [woocommerce_stripe_settings] → test_secret_key   secret, key or token  high
+    HIGH      [wp_mail_smtp] → mail.from_email                  email address         high
+    HIGH      [wp_mail_smtp_mail_key]                           secret, key or token  high
+    MEDIUM    [limit_login_lockouts] → {}                       IP address            medium
+    MEDIUM    [limit_login_logged] → {}                         IP address            medium
+    MEDIUM    [limit_login_retries] → {}                        IP address            medium
+    MEDIUM    [limit_login_retries_valid] → {}                  IP address            medium
+    MEDIUM    [woocommerce_paypal_settings] → api_username      username              medium
+  wp_woocommerce_api_keys · ~2 rows
+    CRITICAL  consumer_secret  secret, key or token  high  known field (woocommerce preset); secret…
+    HIGH      consumer_key     secret, key or token  high  known field (woocommerce preset); hashed…
+  wp_commentmeta · key/value: meta_key → meta_value · 4 keys · ~352 rows
+    HIGH      [akismet_as_submitted] → comment_author_email  email address                 high
+    MEDIUM    [akismet_as_submitted] → comment_author        person name                   medium
+    MEDIUM    [akismet_as_submitted] → comment_content       free text with personal data  medium
+    MEDIUM    [akismet_as_submitted] → user_agent            user agent                    high
+    MEDIUM    [akismet_as_submitted] → user_ip               IP address                    high
+    LOW       [akismet_as_submitted] → comment_author_url    personal website              medium
+  wp_comments · ~140 rows
+    HIGH      comment_author_email  email address                 high    name contains "email"; 14…
+    MEDIUM    comment_agent         user agent                    high    known field (wordpress pr…
+    MEDIUM    comment_author        person name                   medium  name contains "comment au…
+    MEDIUM    comment_author_IP     IP address                    high    name contains "ip"; 130 o…
+    MEDIUM    comment_content       free text with personal data  medium  name contains "comment"; …
+    LOW       comment_author_url    personal website              medium  name contains "author url"
+  wp_postmeta · key/value: meta_key → meta_value · 50 keys · ~21,648 rows
+    HIGH      [_billing_address_1]       street address                medium  name contains "addre…
+    HIGH      [_billing_address_index]   street address                high    known field (woocomm…
+    HIGH      [_billing_email]           email address                 high    name contains "email…
+    HIGH      [_billing_phone]           phone number                  high    name contains "phone…
+    HIGH      [_mail] → recipient        email address                 high    name contains "recip…
+    HIGH      [_shipping_address_1]      street address                medium  name contains "addre…
+    HIGH      [_shipping_address_index]  street address                high    known field (woocomm…
+    HIGH      [_stripe_customer_id]      payment token or ID           medium  name contains "strip…
+    HIGH      [_stripe_source_id]        payment token or ID           medium  name contains "strip…
+    HIGH      [customer_email] → []      email address                 high    2 of 2 sampled value…
+    MEDIUM    [_bbp_author_ip]           IP address                    high    name contains "ip"; …
+    MEDIUM    [_billing_city]            city                          medium  name contains "city"
+    MEDIUM    [_billing_first_name]      person name                   medium  name contains "first…
+    MEDIUM    [_billing_last_name]       person name                   medium  name contains "last …
+    MEDIUM    [_billing_postcode]        postcode                      medium  name contains "postc…
+    MEDIUM    [_customer_ip_address]     IP address                    high    name contains "ip ad…
+    MEDIUM    [_customer_user_agent]     user agent                    high    name contains "user …
+    MEDIUM    [_mail] → sender           free text with personal data  high    of 1 sampled text va…
+    MEDIUM    [_order_key]               secret, key or token          high    known field (woocomm…
+    MEDIUM    [_shipping_city]           city                          medium  name contains "city"
+    MEDIUM    [_shipping_first_name]     person name                   medium  name contains "first…
+    MEDIUM    [_shipping_last_name]      person name                   medium  name contains "last …
+    MEDIUM    [_shipping_postcode]       postcode                      medium  name contains "postc…
+    MEDIUM    [_transaction_id]          payment token or ID           high    21 of 21 sampled val…
+    LOW       [_billing_company]         company name                  medium  name contains "compa…
+    LOW       [_billing_country]         country                       medium  name contains "count…
+    LOW       [_billing_state]           region or state               medium  name contains "billi…
+    LOW       [_shipping_country]        country                       medium  name contains "count…
+  wp_posts · ~268 rows
+    HIGH      post_title where post_type = 'user_request'  email address         high
+    MEDIUM    post_password                                secret, key or token  high
+  wp_um_metadata · key/value: um_key → um_value · 3 keys · ~57 rows
+    HIGH      [mobile_number]  phone number  high  name contains "mobile number"; 19 of 19 sampled …
+  wp_usermeta · key/value: meta_key → meta_value · 33 keys · ~1,497 rows
+    HIGH      meta_key[um_email_as_username_*]         email address                 high
+    HIGH      [billing_address_1]                      street address                medium
+    HIGH      [billing_email]                          email address                 high
+    HIGH      [billing_phone]                          phone number                  high
+    HIGH      [session_tokens]                         secret, key or token          high
+    HIGH      [shipping_address_1]                     street address                medium
+    HIGH      [um_email_as_username_*]                 email address                 high
+    MEDIUM    [billing_city]                           city                          medium
+    MEDIUM    [billing_first_name]                     person name                   medium
+    MEDIUM    [billing_last_name]                      person name                   medium
+    MEDIUM    [billing_postcode]                       postcode                      medium
+    MEDIUM    [community-events-location]              geolocation                   high
+    MEDIUM    [community-events-location] → ip         IP address                    high
+    MEDIUM    [community-events-location] → latitude   geolocation                   medium
+    MEDIUM    [community-events-location] → longitude  geolocation                   medium
+    MEDIUM    [description]                            free text with personal data  medium
+    MEDIUM    [first_name]                             person name                   medium
+    MEDIUM    [last_name]                              person name                   medium
+    MEDIUM    [nickname]                               person name                   medium
+    MEDIUM    [session_tokens] → *.ip                  IP address                    high
+    MEDIUM    [session_tokens] → *.ua                  user agent                    high
+    MEDIUM    [shipping_city]                          city                          medium
+    MEDIUM    [shipping_first_name]                    person name                   medium
+    MEDIUM    [shipping_last_name]                     person name                   medium
+    MEDIUM    [shipping_postcode]                      postcode                      medium
+    LOW       [billing_company]                        company name                  medium
+    LOW       [billing_country]                        country                       medium
+    LOW       [billing_state]                          region or state               medium
+    LOW       [community-events-location] → country    country                       medium
+    LOW       [shipping_country]                       country                       medium
+  wp_users · ~60 rows
+    HIGH      display_name         email address                 medium  10 of 60 sampled values lo…
+    HIGH      user_activation_key  secret, key or token          high    known field (wordpress pre…
+    HIGH      user_email           email address                 high    name contains "email"; 60 …
+    HIGH      user_login           email address                 medium  10 of 60 sampled values lo…
+    HIGH      user_nicename        email address                 medium  10 of 60 sampled values lo…
+    HIGH      user_pass            password hash                 high    name contains "user pass";…
+    MEDIUM    display_name         person name                   medium  name contains "display nam…
+    MEDIUM    user_login           username                      medium  name contains "user login"
+    MEDIUM    user_nicename        username                      medium  name contains "nice name"
+    MEDIUM    user_url             free text with personal data  medium  1 of 11 sampled values hav…
+    LOW       user_url             personal website              medium  name contains "user url"
+  wp_wc_customer_lookup · ~59 rows
+    HIGH      email       email address    high    name contains "email"; 59 of 59 sampled values m…
+    MEDIUM    city        city             medium  name contains "city"
+    MEDIUM    first_name  person name      medium  name contains "first name"
+    MEDIUM    last_name   person name      medium  name contains "last name"
+    MEDIUM    postcode    postcode         medium  name contains "postcode"
+    MEDIUM    username    username         medium  name contains "user name"
+    LOW       country     country          medium  name contains "country"
+    LOW       state       region or state  high    known field (woocommerce preset)
+  wp_wc_order_addresses · ~800 rows
+    HIGH      address_1   street address   medium  name contains "address"
+    HIGH      address_2   street address   medium  name contains "address"; no non-empty values in …
+    HIGH      email       email address    high    name contains "email"; 300 of 300 sampled values…
+    HIGH      phone       phone number     high    name contains "phone"; 300 of 300 sampled values…
+    MEDIUM    city        city             medium  name contains "city"
+    MEDIUM    first_name  person name      medium  name contains "first name"
+    MEDIUM    last_name   person name      medium  name contains "last name"
+    MEDIUM    postcode    postcode         medium  name contains "postcode"
+    LOW       company     company name     medium  name contains "company"
+    LOW       country     country          medium  name contains "country"
+    LOW       state       region or state  high    known field (woocommerce preset)
+  wp_wc_orders · ~400 rows
+    HIGH      billing_email   email address                 high  name contains "email"; 300 of 300…
+    HIGH      customer_note   free text with personal data  high  name contains "customer note"; of…
+    MEDIUM    ip_address      IP address                    high  name contains "ip address"; 300 o…
+    MEDIUM    transaction_id  payment token or ID           high  300 of 300 sampled values look li…
+    MEDIUM    user_agent      user agent                    high  name contains "user agent"; 300 o…
+  wp_wc_orders_meta · key/value: meta_key → meta_value · 6 keys · ~2,400 rows
+    HIGH      [_billing_address_index]            street address       high    known field (woocomm…
+    HIGH      [_shipping_address_index]           street address       high    known field (woocomm…
+    HIGH      [_stripe_customer_id]               payment token or ID  medium  name contains "strip…
+    MEDIUM    [_wc_order_attribution_user_agent]  user agent           high    name contains "user …
+  wp_wc_webhooks · ~3 rows
+    HIGH      secret  secret, key or token  medium  name contains "secret"
+  wp_woocommerce_payment_tokens · ~20 rows
+    HIGH      token  payment token or ID  high  known field (woocommerce preset); saved payment met…
+  wp_woocommerce_sessions · ~25 rows
+    HIGH      session_value → customer.address_1   street address  medium  name contains "address"
+    HIGH      session_value → customer.email       email address   high    name contains "email"; 2…
+    HIGH      session_value → customer.phone       phone number    high    name contains "phone"; 2…
+    MEDIUM    session_value                        session data    high    known field (woocommerce…
+    MEDIUM    session_value → customer.city        city            medium  name contains "city"
+    MEDIUM    session_value → customer.first_name  person name     medium  name contains "first nam…
+    MEDIUM    session_value → customer.last_name   person name     medium  name contains "last name"
+    MEDIUM    session_value → customer.postcode    postcode        medium  name contains "postcode"
+    LOW       session_value → customer.country     country         medium  name contains "country"
+  wp_wc_order_operational_data · ~400 rows
+    MEDIUM    order_key  secret, key or token  high  known field (woocommerce preset); anyone with …
+  wp_woocommerce_payment_tokenmeta · key/value: meta_key → meta_value · 4 keys · ~80 rows
+    LOW       [card_type]     card details  high  known field (woocommerce preset)
+    LOW       [expiry_month]  card details  high  known field (woocommerce preset)
+    LOW       [expiry_year]   card details  high  known field (woocommerce preset)
+    LOW       [last4]         card details  high  known field (woocommerce preset)
+
+Tables to empty in the copy · 3 tables
+  wp_actionscheduler_logs  background job logs
+  wp_woocommerce_api_keys  REST API credentials of the live store
+  wp_woocommerce_sessions  carts and checkout details of live visitors
+
+Relationships: 0 declared, 26 inferred (23 confirmed, 0 likely, 0 weak, 3 not checked)
+5 low-confidence matches are not shown; add --verbose or see --format json.
+
+How to stop each one · 12
+  charge customers       Cancel these actions in the copy, or make sure WooCommerce Subscriptions
+                         starts in staging mode
+                         wp_actionscheduler_actions · woocommerce_scheduled_subscription_payment
+  send email             Point the mailer at a mail catcher such as Mailpit, or turn it off, in the
+                         copy
+                         wp_options · wp_mail_smtp
+  take live payments     Switch the gateway to test or sandbox mode and remove the live keys in the
+                         copy
+                         wp_options · woocommerce_stripe_settings
+  post to webhooks       Set status to 'disabled' (or delete the rows) in the copy
+                         wp_wc_webhooks
+  upload backups         Remove the remote storage in UpdraftPlus's settings in the copy, or turn
+                         its backup schedule off
+                         wp_options · updraft_service
+  email members          Turn these emails off in WooCommerce > Settings > Emails in the copy, or
+                         route mail to a catcher such as Mailpit
+                         wp_options
+  act as the live site   Disconnect the copy: delete the blog token in jetpack_private_options and
+                         the auth entry in woocommerce_helper_data, or define JETPACK_STAGING_MODE
+                         in its wp-config.php
+                         wp_options
+  run scheduled actions  Cancel pending actions in the copy, or turn off WP-Cron and Action
+                         Scheduler there
+                         wp_actionscheduler_actions
+  run cron events        Turn cron off on the copy's host (DISABLE_WP_CRON stops runs on page loads,
+                         not a system cron), and change the plugins' own settings, since they
+                         schedule their events again
+                         wp_options · cron
+  email store staff      Set these emails to off in WooCommerce > Settings > Emails in the copy, or
+                         route mail to a catcher such as Mailpit
+                         wp_options · woocommerce_new_order_settings
+  email staff            Point these settings at a test address, or route mail to a catcher such as
+                         Mailpit, in the copy
+                         wp_options
+  email form recipients  Route mail to a catcher such as Mailpit in the copy, or add demo_mode: on
+                         to each form's Additional Settings
+                         wp_postmeta · _mail
+
+What a plain copy of this database would carry into staging · 157 findings
+  CRITICAL    7  secret, key or token (7)
+  HIGH       59  email address (24) · secret, key or token (13) · street address (11) · 4 more
+  MEDIUM     69  person name (20) · IP address (11) · city (7) · postcode (7) · 7 more
+  LOW        22  country (8) · card details (4) · region or state (4) · company name (3) · 1 more
+
+What staging could do to real people · 12
+  CRITICAL  charge customers       6 subscription renewal payments are scheduled
+  HIGH      send email             Outgoing email is sent through WP Mail SMTP (mailer: sendgrid)
+  HIGH      take live payments     Payment gateway "stripe" is enabled in live mode
+  HIGH      post to webhooks       2 active webhooks would send order and customer data from staging
+                                   to their delivery URLs
+  HIGH      upload backups         UpdraftPlus backups are scheduled and go to Amazon S3
+  HIGH      email members          2 WooCommerce Memberships emails are enabled
+  HIGH      act as the live site   The copy keeps the live site's Jetpack connection; connected
+                                   services would act for the live site, and WooCommerce Shipping,
+                                   Tax or Payments are active
+  MEDIUM    run scheduled actions  40 pending scheduled actions would run on staging
+  MEDIUM    run cron events        5 WP-Cron events would run on staging, including UpdraftPlus
+                                   backups, WPForms email summaries, WooCommerce usage tracking and
+                                   Ultimate Member jobs
+  MEDIUM    email store staff      WooCommerce emails store staff about new and cancelled orders
+  MEDIUM    email staff            1 plugin setting sends notification emails to staff addresses
+                                   (for example fixture_admin_recipient)
+  MEDIUM    email form recipients  1 Contact Form 7 form emails its submissions to the addresses in
+                                   its settings
+
+Add --config-out prodmask.yml to write a starter masking config from these findings.
+prodmask Pro copies this database with the real shape and fake customers: https://prodmask.com

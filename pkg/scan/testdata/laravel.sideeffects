@@ -1,0 +1,1 @@
+laravel	queued_jobs	jobs		medium	12	12 queued jobs would run when a queue worker starts on staging (queues: default (6), emails (6))	Empty the jobs table in the copy	run queued jobs	12 queued jobs would run when a queue worker starts on staging

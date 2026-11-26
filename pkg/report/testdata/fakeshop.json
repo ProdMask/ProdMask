@@ -1,0 +1,3332 @@
+{
+  "tool": "prodmask",
+  "version": "0.14.0",
+  "generated_at": "2026-11-25T13:58:28Z",
+  "server": {
+    "flavor": "mariadb",
+    "version": "11.8.9-MariaDB",
+    "address": "127.0.0.1:3381",
+    "user": "prodmask_ro"
+  },
+  "database": "shop",
+  "platforms": [
+    {
+      "name": "wordpress",
+      "label": "WordPress",
+      "table_prefix": "wp_",
+      "details": [
+        "db_version 60421"
+      ]
+    },
+    {
+      "name": "woocommerce",
+      "label": "WooCommerce",
+      "version": "9.3.3",
+      "table_prefix": "wp_",
+      "details": [
+        "orders in HPOS tables"
+      ]
+    }
+  ],
+  "options": {
+    "sample_rows": 300,
+    "meta_sample_rows": 3000,
+    "key_sample_rows": 20,
+    "samples": true,
+    "preset": "auto",
+    "statement_timeout_seconds": 10
+  },
+  "summary": {
+    "tables": 28,
+    "tables_sampled": 28,
+    "views": 0,
+    "rows_sampled": 9100,
+    "tables_with_findings": 18,
+    "findings": 157,
+    "by_severity": {
+      "critical": 7,
+      "high": 59,
+      "low": 22,
+      "medium": 69
+    },
+    "by_category": {
+      "address": 11,
+      "card_meta": 4,
+      "city": 7,
+      "company": 3,
+      "country": 8,
+      "email": 24,
+      "free_text": 6,
+      "geo_location": 3,
+      "ip_address": 11,
+      "password_hash": 1,
+      "payment_token": 6,
+      "person_name": 20,
+      "phone": 5,
+      "postcode": 7,
+      "region": 4,
+      "secret": 23,
+      "session_data": 1,
+      "user_agent": 6,
+      "username": 4,
+      "website": 3
+    },
+    "highest_severity": "critical",
+    "side_effects": 12,
+    "relationships": 26,
+    "inferred_relationships_confirmed": 23,
+    "duration_ms": 278
+  },
+  "tables": [
+    {
+      "name": "wp_actionscheduler_actions",
+      "kind": "table",
+      "rows_estimate": 220,
+      "rows_sampled": 220,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_actionscheduler_groups",
+      "kind": "table",
+      "rows_estimate": 3,
+      "rows_sampled": 3,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_actionscheduler_logs",
+      "kind": "table",
+      "rows_estimate": 441,
+      "rows_sampled": 300,
+      "findings": 0,
+      "highest_severity": "none",
+      "suggested_action": "truncate",
+      "action_reason": "background job logs"
+    },
+    {
+      "name": "wp_commentmeta",
+      "kind": "key/value",
+      "rows_estimate": 352,
+      "rows_sampled": 380,
+      "findings": 6,
+      "highest_severity": "high",
+      "key_column": "meta_key",
+      "value_column": "meta_value",
+      "keys": 4
+    },
+    {
+      "name": "wp_comments",
+      "kind": "table",
+      "rows_estimate": 140,
+      "rows_sampled": 140,
+      "findings": 6,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_options",
+      "kind": "key/value",
+      "rows_estimate": 252,
+      "rows_sampled": 504,
+      "findings": 27,
+      "highest_severity": "critical",
+      "key_column": "option_name",
+      "value_column": "option_value",
+      "keys": 252
+    },
+    {
+      "name": "wp_postmeta",
+      "kind": "key/value",
+      "rows_estimate": 21648,
+      "rows_sampled": 3909,
+      "findings": 28,
+      "highest_severity": "high",
+      "key_column": "meta_key",
+      "value_column": "meta_value",
+      "keys": 50
+    },
+    {
+      "name": "wp_posts",
+      "kind": "table",
+      "rows_estimate": 268,
+      "rows_sampled": 268,
+      "findings": 2,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_term_relationships",
+      "kind": "table",
+      "rows_estimate": 70,
+      "rows_sampled": 70,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_term_taxonomy",
+      "kind": "table",
+      "rows_estimate": 12,
+      "rows_sampled": 12,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_terms",
+      "kind": "table",
+      "rows_estimate": 12,
+      "rows_sampled": 12,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_um_metadata",
+      "kind": "key/value",
+      "rows_estimate": 57,
+      "rows_sampled": 114,
+      "findings": 1,
+      "highest_severity": "high",
+      "key_column": "um_key",
+      "value_column": "um_value",
+      "keys": 3
+    },
+    {
+      "name": "wp_usermeta",
+      "kind": "key/value",
+      "rows_estimate": 1497,
+      "rows_sampled": 831,
+      "findings": 30,
+      "highest_severity": "high",
+      "key_column": "meta_key",
+      "value_column": "meta_value",
+      "keys": 33
+    },
+    {
+      "name": "wp_users",
+      "kind": "table",
+      "rows_estimate": 60,
+      "rows_sampled": 60,
+      "findings": 11,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_wc_admin_notes",
+      "kind": "table",
+      "rows_estimate": 6,
+      "rows_sampled": 6,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_wc_customer_lookup",
+      "kind": "table",
+      "rows_estimate": 59,
+      "rows_sampled": 59,
+      "findings": 8,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_wc_order_addresses",
+      "kind": "table",
+      "rows_estimate": 800,
+      "rows_sampled": 300,
+      "findings": 11,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_wc_order_operational_data",
+      "kind": "table",
+      "rows_estimate": 400,
+      "rows_sampled": 300,
+      "findings": 1,
+      "highest_severity": "medium"
+    },
+    {
+      "name": "wp_wc_orders",
+      "kind": "table",
+      "rows_estimate": 400,
+      "rows_sampled": 300,
+      "findings": 5,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_wc_orders_meta",
+      "kind": "key/value",
+      "rows_estimate": 2400,
+      "rows_sampled": 420,
+      "findings": 4,
+      "highest_severity": "high",
+      "key_column": "meta_key",
+      "value_column": "meta_value",
+      "keys": 6
+    },
+    {
+      "name": "wp_wc_webhooks",
+      "kind": "table",
+      "rows_estimate": 3,
+      "rows_sampled": 3,
+      "findings": 1,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_woocommerce_api_keys",
+      "kind": "table",
+      "rows_estimate": 2,
+      "rows_sampled": 2,
+      "findings": 2,
+      "highest_severity": "critical",
+      "suggested_action": "truncate",
+      "action_reason": "REST API credentials of the live store"
+    },
+    {
+      "name": "wp_woocommerce_order_itemmeta",
+      "kind": "key/value",
+      "rows_estimate": 2287,
+      "rows_sampled": 380,
+      "findings": 0,
+      "highest_severity": "none",
+      "key_column": "meta_key",
+      "value_column": "meta_value",
+      "keys": 4
+    },
+    {
+      "name": "wp_woocommerce_order_items",
+      "kind": "table",
+      "rows_estimate": 750,
+      "rows_sampled": 300,
+      "findings": 0,
+      "highest_severity": "none"
+    },
+    {
+      "name": "wp_woocommerce_payment_tokenmeta",
+      "kind": "key/value",
+      "rows_estimate": 80,
+      "rows_sampled": 160,
+      "findings": 4,
+      "highest_severity": "low",
+      "key_column": "meta_key",
+      "value_column": "meta_value",
+      "keys": 4
+    },
+    {
+      "name": "wp_woocommerce_payment_tokens",
+      "kind": "table",
+      "rows_estimate": 20,
+      "rows_sampled": 20,
+      "findings": 1,
+      "highest_severity": "high"
+    },
+    {
+      "name": "wp_woocommerce_sessions",
+      "kind": "table",
+      "rows_estimate": 25,
+      "rows_sampled": 25,
+      "findings": 9,
+      "highest_severity": "high",
+      "suggested_action": "truncate",
+      "action_reason": "carts and checkout details of live visitors"
+    },
+    {
+      "name": "wp_wt_iew_mapping_template",
+      "kind": "table",
+      "rows_estimate": 2,
+      "rows_sampled": 2,
+      "findings": 0,
+      "highest_severity": "none"
+    }
+  ],
+  "findings": [
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "as3cf_settings",
+      "path": "access-key-id",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "secret formats found: AWS access key ID (1 live)"
+      ],
+      "suggested_mask": "null",
+      "source": "value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_paypal_settings",
+      "path": "api_password",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"password\"",
+        "1 of 1 sampled values aren't password hashes: plain text or reversible encryption"
+      ],
+      "suggested_mask": "null",
+      "source": "name+value",
+      "note": "a copy hands out working passwords"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_stripe_settings",
+      "path": "secret_key",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"secret key\"",
+        "secret formats found: Stripe secret key (1 live)"
+      ],
+      "suggested_mask": "null",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_stripe_settings",
+      "path": "webhook_secret",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"webhook secret\"",
+        "secret formats found: Stripe webhook secret (1 live)"
+      ],
+      "suggested_mask": "null",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "wp_mail_smtp",
+      "path": "sendgrid.api_key",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"api key\"",
+        "secret formats found: SendGrid API key (1 live)"
+      ],
+      "suggested_mask": "null",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "wpgmza_temp_api",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "secret formats found: Google API key (1 live)"
+      ],
+      "suggested_mask": "null",
+      "source": "value"
+    },
+    {
+      "table": "wp_woocommerce_api_keys",
+      "column": "consumer_secret",
+      "category": "secret",
+      "severity": "critical",
+      "confidence": "high",
+      "sampled": 2,
+      "matched": 2,
+      "reasons": [
+        "known field (woocommerce preset)",
+        "secret formats found: WooCommerce API key (2 live)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce+value",
+      "note": "REST API secret"
+    },
+    {
+      "table": "wp_commentmeta",
+      "column": "meta_value",
+      "meta_key": "akismet_as_submitted",
+      "path": "comment_author_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 121,
+      "matched": 121,
+      "reasons": [
+        "name contains \"email\"",
+        "121 of 121 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_comments",
+      "column": "comment_author_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 140,
+      "matched": 140,
+      "reasons": [
+        "name contains \"email\"",
+        "140 of 140 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "admin_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "known field (wordpress preset)",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "preset:wordpress+value",
+      "note": "site administrator"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "fixture_admin_recipient",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"recipient\"",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "fixture_hashids_salt",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"salt\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "jetpack_private_options",
+      "path": "blog_token",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"token\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "logged_in_salt",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "known field (wordpress preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:wordpress",
+      "note": "authentication key or salt; a copy that keeps it trusts production login cookies"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "rank-math-options-titles",
+      "path": "facebook_secret",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"secret\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "secret_key",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "known field (wordpress preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:wordpress",
+      "note": "authentication key or salt; a copy that keeps it trusts production login cookies"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "um_cache_userdata_*",
+      "keys": 60,
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 6,
+      "matched": 6,
+      "reasons": [
+        "um_email_as_username_*: name contains \"email\"",
+        "6 of 6 sampled values match the email address format",
+        "also holds: password hash, person name, username"
+      ],
+      "suggested_mask": "delete",
+      "source": "name+value",
+      "note": "Ultimate Member's per-user profile cache, password hash included; the plugin rebuilds it"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_cancelled_order_settings",
+      "path": "recipient",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"recipient\"",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_new_order_settings",
+      "path": "recipient",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"recipient\"",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_paypal_settings",
+      "path": "api_signature",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"api signature\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_paypal_settings",
+      "path": "email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"email\"",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_paypal_settings",
+      "path": "sandbox_api_password",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"password\"",
+        "1 of 1 sampled values aren't password hashes: plain text or reversible encryption"
+      ],
+      "suggested_mask": "null",
+      "source": "name+value",
+      "note": "a copy hands out working passwords"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_stripe_settings",
+      "path": "test_secret_key",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"secret key\"",
+        "secret formats found: Stripe secret key (1 test)"
+      ],
+      "suggested_mask": "null",
+      "source": "name+value",
+      "note": "test-mode keys only"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "wp_mail_smtp",
+      "path": "mail.from_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "name contains \"email\"",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "wp_mail_smtp_mail_key",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "known field (wordpress preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:wordpress",
+      "note": "WP Mail SMTP's key; it decrypts the SMTP password it stores"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_address_1",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_address_index",
+      "category": "address",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)",
+        "of 21 sampled text values, 21 contain email addresses, 21 contain phone numbers"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "search index of the full address, email and phone; WooCommerce rebuilds it"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 21,
+      "reasons": [
+        "name contains \"email\"",
+        "21 of 21 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_phone",
+      "category": "phone",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 21,
+      "reasons": [
+        "name contains \"phone\"",
+        "21 of 21 sampled values match the phone number format"
+      ],
+      "suggested_mask": "fake_phone",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_mail",
+      "path": "recipient",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 2,
+      "matched": 1,
+      "reasons": [
+        "name contains \"recipient\"",
+        "1 of 2 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_address_1",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_address_index",
+      "category": "address",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)",
+        "of 21 sampled text values, 21 contain email addresses, 21 contain phone numbers"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "search index of the full address, email and phone; WooCommerce rebuilds it"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_stripe_customer_id",
+      "category": "payment_token",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"stripe customer id\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_stripe_source_id",
+      "category": "payment_token",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"stripe source id\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "customer_email",
+      "path": "[]",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 2,
+      "matched": 2,
+      "reasons": [
+        "2 of 2 sampled values look like email addresses"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "value"
+    },
+    {
+      "table": "wp_posts",
+      "column": "post_title",
+      "where": "post_type = 'user_request'",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "known field (wordpress preset)",
+        "1 of 1 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "preset:wordpress+value",
+      "note": "privacy requests keep the requester's email address in the title"
+    },
+    {
+      "table": "wp_um_metadata",
+      "column": "um_value",
+      "meta_key": "mobile_number",
+      "category": "phone",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 19,
+      "matched": 19,
+      "reasons": [
+        "name contains \"mobile number\"",
+        "19 of 19 sampled values match the phone number format"
+      ],
+      "suggested_mask": "fake_phone",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_key",
+      "meta_key": "um_email_as_username_*",
+      "key_name": true,
+      "keys": 6,
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 6,
+      "matched": 6,
+      "reasons": [
+        "known key family"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "key",
+      "note": "the key names hold personal data; a copy must rewrite them too"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_address_1",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 24,
+      "matched": 24,
+      "reasons": [
+        "name contains \"email\"",
+        "24 of 24 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_phone",
+      "category": "phone",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 24,
+      "matched": 24,
+      "reasons": [
+        "name contains \"phone\"",
+        "24 of 24 sampled values match the phone number format"
+      ],
+      "suggested_mask": "fake_phone",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "session_tokens",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "known field (wordpress preset)"
+      ],
+      "suggested_mask": "delete",
+      "source": "preset:wordpress",
+      "note": "login sessions, with IP addresses and user agents"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "shipping_address_1",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "um_email_as_username_*",
+      "keys": 6,
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 6,
+      "matched": 6,
+      "reasons": [
+        "name contains \"email\"",
+        "6 of 6 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_users",
+      "column": "display_name",
+      "category": "email",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 60,
+      "matched": 10,
+      "reasons": [
+        "10 of 60 sampled values look like email addresses"
+      ],
+      "suggested_mask": "fake_name",
+      "source": "value",
+      "note": "10 of 60 values are email addresses; keep them email-shaped when masking"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_activation_key",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 4,
+      "matched": 0,
+      "reasons": [
+        "known field (wordpress preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:wordpress",
+      "note": "password reset key"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 60,
+      "matched": 60,
+      "reasons": [
+        "name contains \"email\"",
+        "60 of 60 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_login",
+      "category": "email",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 60,
+      "matched": 10,
+      "reasons": [
+        "10 of 60 sampled values look like email addresses"
+      ],
+      "suggested_mask": "fake_username",
+      "source": "value",
+      "note": "10 of 60 values are email addresses; keep them email-shaped when masking"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_nicename",
+      "category": "email",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 60,
+      "matched": 10,
+      "reasons": [
+        "10 of 60 sampled values look like email addresses"
+      ],
+      "suggested_mask": "fake_username",
+      "source": "value",
+      "note": "10 of 60 values are email addresses; keep them email-shaped when masking"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_pass",
+      "category": "password_hash",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 60,
+      "matched": 60,
+      "reasons": [
+        "name contains \"user pass\"",
+        "60 of 60 sampled values match the password hash format",
+        "hash formats: WordPress bcrypt 20, phpass 40"
+      ],
+      "suggested_mask": "staging_password",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 59,
+      "matched": 59,
+      "reasons": [
+        "name contains \"email\"",
+        "59 of 59 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "address_1",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "address_2",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 0,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name",
+      "note": "no non-empty values in the sample"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 300,
+      "reasons": [
+        "name contains \"email\"",
+        "300 of 300 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "phone",
+      "category": "phone",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 300,
+      "reasons": [
+        "name contains \"phone\"",
+        "300 of 300 sampled values match the phone number format"
+      ],
+      "suggested_mask": "fake_phone",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_orders",
+      "column": "billing_email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 300,
+      "reasons": [
+        "name contains \"email\"",
+        "300 of 300 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_orders",
+      "column": "customer_note",
+      "category": "free_text",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 89,
+      "matched": 34,
+      "reasons": [
+        "name contains \"customer note\"",
+        "of 89 sampled text values, 34 contain phone numbers, 2 contain card-like numbers"
+      ],
+      "suggested_mask": "redact",
+      "source": "name+value",
+      "note": "possible card numbers typed into free text"
+    },
+    {
+      "table": "wp_wc_orders_meta",
+      "column": "meta_value",
+      "meta_key": "_billing_address_index",
+      "category": "address",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 50,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)",
+        "of 50 sampled text values, 50 contain email addresses, 50 contain phone numbers"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "search index of the full address, email and phone; WooCommerce rebuilds it"
+    },
+    {
+      "table": "wp_wc_orders_meta",
+      "column": "meta_value",
+      "meta_key": "_shipping_address_index",
+      "category": "address",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 50,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)",
+        "of 50 sampled text values, 50 contain email addresses, 50 contain phone numbers"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "search index of the full address, email and phone; WooCommerce rebuilds it"
+    },
+    {
+      "table": "wp_wc_orders_meta",
+      "column": "meta_value",
+      "meta_key": "_stripe_customer_id",
+      "category": "payment_token",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 50,
+      "matched": 0,
+      "reasons": [
+        "name contains \"stripe customer id\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_webhooks",
+      "column": "secret",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 3,
+      "matched": 0,
+      "reasons": [
+        "name contains \"secret\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_woocommerce_api_keys",
+      "column": "consumer_key",
+      "category": "secret",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 2,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "hashed REST API key"
+    },
+    {
+      "table": "wp_woocommerce_payment_tokens",
+      "column": "token",
+      "category": "payment_token",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 20,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "saved payment method at the gateway"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.address_1",
+      "category": "address",
+      "severity": "high",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"address\""
+      ],
+      "suggested_mask": "fake_street",
+      "source": "name"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.email",
+      "category": "email",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 25,
+      "matched": 25,
+      "reasons": [
+        "name contains \"email\"",
+        "25 of 25 sampled values match the email address format"
+      ],
+      "suggested_mask": "fake_email",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.phone",
+      "category": "phone",
+      "severity": "high",
+      "confidence": "high",
+      "sampled": 24,
+      "matched": 24,
+      "reasons": [
+        "name contains \"phone\"",
+        "24 of 24 sampled values match the phone number format"
+      ],
+      "suggested_mask": "fake_phone",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_commentmeta",
+      "column": "meta_value",
+      "meta_key": "akismet_as_submitted",
+      "path": "comment_author",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 121,
+      "matched": 0,
+      "reasons": [
+        "name contains \"comment author\""
+      ],
+      "suggested_mask": "fake_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_commentmeta",
+      "column": "meta_value",
+      "meta_key": "akismet_as_submitted",
+      "path": "comment_content",
+      "category": "free_text",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 121,
+      "matched": 10,
+      "reasons": [
+        "name contains \"comment\"",
+        "of 121 sampled text values, 8 contain email addresses, 10 contain phone numbers"
+      ],
+      "suggested_mask": "redact",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_commentmeta",
+      "column": "meta_value",
+      "meta_key": "akismet_as_submitted",
+      "path": "user_agent",
+      "category": "user_agent",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 121,
+      "matched": 121,
+      "reasons": [
+        "name contains \"user agent\"",
+        "121 of 121 sampled values match the user agent format"
+      ],
+      "suggested_mask": "fake_user_agent",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_commentmeta",
+      "column": "meta_value",
+      "meta_key": "akismet_as_submitted",
+      "path": "user_ip",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 121,
+      "matched": 121,
+      "reasons": [
+        "name contains \"ip\"",
+        "121 of 121 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_comments",
+      "column": "comment_agent",
+      "category": "user_agent",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 130,
+      "matched": 130,
+      "reasons": [
+        "known field (wordpress preset)",
+        "130 of 130 sampled values match the user agent format"
+      ],
+      "suggested_mask": "fake_user_agent",
+      "source": "preset:wordpress+value"
+    },
+    {
+      "table": "wp_comments",
+      "column": "comment_author",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 140,
+      "matched": 0,
+      "reasons": [
+        "name contains \"comment author\""
+      ],
+      "suggested_mask": "fake_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_comments",
+      "column": "comment_author_IP",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 130,
+      "matched": 130,
+      "reasons": [
+        "name contains \"ip\"",
+        "130 of 130 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_comments",
+      "column": "comment_content",
+      "category": "free_text",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 140,
+      "matched": 10,
+      "reasons": [
+        "name contains \"comment\"",
+        "of 140 sampled text values, 8 contain email addresses, 10 contain phone numbers"
+      ],
+      "suggested_mask": "redact",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "limit_login_lockouts",
+      "path": "{}",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 2,
+      "matched": 2,
+      "reasons": [
+        "2 of 2 sampled values look like IP addresses"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "limit_login_logged",
+      "path": "{}",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "1 of 1 sampled values look like IP addresses"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "limit_login_retries",
+      "path": "{}",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "1 of 1 sampled values look like IP addresses"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "limit_login_retries_valid",
+      "path": "{}",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "1 of 1 sampled values look like IP addresses"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "value"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_paypal_settings",
+      "path": "api_username",
+      "category": "username",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"user name\""
+      ],
+      "suggested_mask": "fake_username",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_bbp_author_ip",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 4,
+      "matched": 4,
+      "reasons": [
+        "name contains \"ip\"",
+        "4 of 4 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_customer_ip_address",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 21,
+      "reasons": [
+        "name contains \"ip address\"",
+        "21 of 21 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_customer_user_agent",
+      "category": "user_agent",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 21,
+      "reasons": [
+        "name contains \"user agent\"",
+        "21 of 21 sampled values match the user agent format"
+      ],
+      "suggested_mask": "fake_user_agent",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_mail",
+      "path": "sender",
+      "category": "free_text",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 1,
+      "matched": 1,
+      "reasons": [
+        "of 1 sampled text values, 1 contain email addresses"
+      ],
+      "suggested_mask": "redact",
+      "source": "value"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_order_key",
+      "category": "secret",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 22,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "anyone with this key in a link can view the order"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_transaction_id",
+      "category": "payment_token",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 21,
+      "reasons": [
+        "21 of 21 sampled values look like payment provider IDs"
+      ],
+      "suggested_mask": "null",
+      "source": "value"
+    },
+    {
+      "table": "wp_posts",
+      "column": "post_password",
+      "category": "secret",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 151,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "suggested_row_masks": [
+        {
+          "where": "post_type IN ('shop_order', 'shop_order_refund', 'shop_order_placehold', 'shop_subscription')",
+          "mask": "null",
+          "note": "WooCommerce order keys; anyone with one in a link can view the order"
+        },
+        {
+          "where": "post_type = 'user_request'",
+          "mask": "null",
+          "note": "the hashed confirmation key of a privacy request"
+        }
+      ],
+      "source": "preset:woocommerce",
+      "note": "WordPress post passwords in plain text, and the key of each order stored as a post"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "community-events-location",
+      "category": "geo_location",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "known field (wordpress preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:wordpress",
+      "note": "IP address and city saved by the dashboard events widget"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "community-events-location",
+      "path": "ip",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 21,
+      "matched": 21,
+      "reasons": [
+        "name contains \"ip\"",
+        "21 of 21 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "community-events-location",
+      "path": "latitude",
+      "category": "geo_location",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"latitude\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "community-events-location",
+      "path": "longitude",
+      "category": "geo_location",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"longitude\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "description",
+      "category": "free_text",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 8,
+      "matched": 1,
+      "reasons": [
+        "known field (wordpress preset)",
+        "of 8 sampled text values, 1 contain email addresses, 1 contain phone numbers"
+      ],
+      "suggested_mask": "redact",
+      "source": "preset:wordpress+value",
+      "note": "user biography"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "nickname",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"nick name\""
+      ],
+      "suggested_mask": "fake_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "session_tokens",
+      "path": "*.ip",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 24,
+      "matched": 24,
+      "reasons": [
+        "name contains \"ip\"",
+        "24 of 24 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "session_tokens",
+      "path": "*.ua",
+      "category": "user_agent",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 24,
+      "matched": 24,
+      "reasons": [
+        "24 of 24 sampled values look like browser user agents"
+      ],
+      "suggested_mask": "fake_user_agent",
+      "source": "value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "shipping_city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 25,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "shipping_first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "shipping_last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "shipping_postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 25,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_users",
+      "column": "display_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 60,
+      "matched": 0,
+      "reasons": [
+        "name contains \"display name\""
+      ],
+      "suggested_mask": "fake_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_login",
+      "category": "username",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 60,
+      "matched": 0,
+      "reasons": [
+        "name contains \"user login\""
+      ],
+      "suggested_mask": "fake_username",
+      "source": "name"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_nicename",
+      "category": "username",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 60,
+      "matched": 0,
+      "reasons": [
+        "name contains \"nice name\""
+      ],
+      "suggested_mask": "fake_username",
+      "source": "name"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_url",
+      "category": "free_text",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 11,
+      "matched": 1,
+      "reasons": [
+        "1 of 11 sampled values have email addresses inside, such as in URLs"
+      ],
+      "suggested_mask": "redact",
+      "source": "value"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "username",
+      "category": "username",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "name contains \"user name\""
+      ],
+      "suggested_mask": "fake_username",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_operational_data",
+      "column": "order_key",
+      "category": "secret",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "anyone with this key in a link can view the order"
+    },
+    {
+      "table": "wp_wc_orders",
+      "column": "ip_address",
+      "category": "ip_address",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 300,
+      "reasons": [
+        "name contains \"ip address\"",
+        "300 of 300 sampled values match the IP address format"
+      ],
+      "suggested_mask": "fake_ip",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_orders",
+      "column": "transaction_id",
+      "category": "payment_token",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 300,
+      "reasons": [
+        "300 of 300 sampled values look like payment provider IDs"
+      ],
+      "suggested_mask": "null",
+      "source": "value"
+    },
+    {
+      "table": "wp_wc_orders",
+      "column": "user_agent",
+      "category": "user_agent",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 300,
+      "reasons": [
+        "name contains \"user agent\"",
+        "300 of 300 sampled values match the user agent format"
+      ],
+      "suggested_mask": "fake_user_agent",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_wc_orders_meta",
+      "column": "meta_value",
+      "meta_key": "_wc_order_attribution_user_agent",
+      "category": "user_agent",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 49,
+      "matched": 49,
+      "reasons": [
+        "name contains \"user agent\"",
+        "49 of 49 sampled values match the user agent format"
+      ],
+      "suggested_mask": "fake_user_agent",
+      "source": "name+value"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "category": "session_data",
+      "severity": "medium",
+      "confidence": "high",
+      "sampled": 25,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "null",
+      "source": "preset:woocommerce",
+      "note": "carts and checkout details of visitors"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.city",
+      "category": "city",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"city\""
+      ],
+      "suggested_mask": "fake_city",
+      "source": "name"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.first_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"first name\""
+      ],
+      "suggested_mask": "fake_first_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.last_name",
+      "category": "person_name",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"last name\""
+      ],
+      "suggested_mask": "fake_last_name",
+      "source": "name"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.postcode",
+      "category": "postcode",
+      "severity": "medium",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"postcode\""
+      ],
+      "suggested_mask": "fake_postcode",
+      "source": "name"
+    },
+    {
+      "table": "wp_actionscheduler_logs",
+      "column": "message",
+      "category": "free_text",
+      "severity": "low",
+      "confidence": "low",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"message\""
+      ],
+      "suggested_mask": "redact",
+      "source": "name",
+      "note": "no personal data spotted in the sampled text"
+    },
+    {
+      "table": "wp_commentmeta",
+      "column": "meta_value",
+      "meta_key": "akismet_as_submitted",
+      "path": "comment_author_url",
+      "category": "website",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"author url\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_comments",
+      "column": "comment_author_url",
+      "category": "website",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 26,
+      "matched": 0,
+      "reasons": [
+        "name contains \"author url\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "_transient_fixture_customer_email",
+      "category": "email",
+      "severity": "low",
+      "confidence": "low",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"email\""
+      ],
+      "suggested_mask": "delete",
+      "source": "name",
+      "note": "sampled values don't match the email address format; a transient: cached data WordPress rebuilds"
+    },
+    {
+      "table": "wp_options",
+      "column": "option_value",
+      "meta_key": "woocommerce_eu_vat_number_validate",
+      "category": "national_id",
+      "severity": "low",
+      "confidence": "low",
+      "sampled": 1,
+      "matched": 0,
+      "reasons": [
+        "name contains \"vat number\""
+      ],
+      "suggested_mask": "hash",
+      "source": "name",
+      "note": "sampled values are all on/off flags"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_company",
+      "category": "company",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"company\""
+      ],
+      "suggested_mask": "fake_company",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_billing_state",
+      "category": "region",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"billing state\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_postmeta",
+      "column": "meta_value",
+      "meta_key": "_shipping_country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_posts",
+      "column": "post_content",
+      "category": "free_text",
+      "severity": "low",
+      "confidence": "low",
+      "sampled": 85,
+      "matched": 1,
+      "reasons": [
+        "of 85 sampled text values, 1 contain email addresses"
+      ],
+      "suggested_mask": "redact",
+      "source": "value"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_company",
+      "category": "company",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"company\""
+      ],
+      "suggested_mask": "fake_company",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "billing_state",
+      "category": "region",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"billing state\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "community-events-location",
+      "path": "country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 21,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_usermeta",
+      "column": "meta_value",
+      "meta_key": "shipping_country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_users",
+      "column": "user_url",
+      "category": "website",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 11,
+      "matched": 0,
+      "reasons": [
+        "name contains \"user url\""
+      ],
+      "suggested_mask": "null",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_customer_lookup",
+      "column": "state",
+      "category": "region",
+      "severity": "low",
+      "confidence": "high",
+      "sampled": 59,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "source": "preset:woocommerce"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "company",
+      "category": "company",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"company\""
+      ],
+      "suggested_mask": "fake_company",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    },
+    {
+      "table": "wp_wc_order_addresses",
+      "column": "state",
+      "category": "region",
+      "severity": "low",
+      "confidence": "high",
+      "sampled": 300,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "source": "preset:woocommerce"
+    },
+    {
+      "table": "wp_woocommerce_order_itemmeta",
+      "column": "meta_value",
+      "meta_key": "Gift message",
+      "category": "free_text",
+      "severity": "low",
+      "confidence": "low",
+      "sampled": 22,
+      "matched": 0,
+      "reasons": [
+        "name contains \"message\""
+      ],
+      "suggested_mask": "redact",
+      "source": "name",
+      "note": "no personal data spotted in the sampled text"
+    },
+    {
+      "table": "wp_woocommerce_payment_tokenmeta",
+      "column": "meta_value",
+      "meta_key": "card_type",
+      "category": "card_meta",
+      "severity": "low",
+      "confidence": "high",
+      "sampled": 20,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "source": "preset:woocommerce"
+    },
+    {
+      "table": "wp_woocommerce_payment_tokenmeta",
+      "column": "meta_value",
+      "meta_key": "expiry_month",
+      "category": "card_meta",
+      "severity": "low",
+      "confidence": "high",
+      "sampled": 20,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "source": "preset:woocommerce"
+    },
+    {
+      "table": "wp_woocommerce_payment_tokenmeta",
+      "column": "meta_value",
+      "meta_key": "expiry_year",
+      "category": "card_meta",
+      "severity": "low",
+      "confidence": "high",
+      "sampled": 20,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "source": "preset:woocommerce"
+    },
+    {
+      "table": "wp_woocommerce_payment_tokenmeta",
+      "column": "meta_value",
+      "meta_key": "last4",
+      "category": "card_meta",
+      "severity": "low",
+      "confidence": "high",
+      "sampled": 20,
+      "matched": 0,
+      "reasons": [
+        "known field (woocommerce preset)"
+      ],
+      "suggested_mask": "keep",
+      "source": "preset:woocommerce"
+    },
+    {
+      "table": "wp_woocommerce_sessions",
+      "column": "session_value",
+      "path": "customer.country",
+      "category": "country",
+      "severity": "low",
+      "confidence": "medium",
+      "sampled": 24,
+      "matched": 0,
+      "reasons": [
+        "name contains \"country\""
+      ],
+      "suggested_mask": "keep",
+      "source": "name"
+    }
+  ],
+  "side_effects": [
+    {
+      "platform": "woocommerce",
+      "kind": "payments",
+      "table": "wp_actionscheduler_actions",
+      "item": "woocommerce_scheduled_subscription_payment",
+      "severity": "critical",
+      "summary": "6 subscription renewal payments are scheduled; staging would try to charge customers when they fall due",
+      "count": 6,
+      "fix": "Cancel these actions in the copy, or make sure WooCommerce Subscriptions starts in staging mode"
+    },
+    {
+      "platform": "wordpress",
+      "kind": "email",
+      "table": "wp_options",
+      "item": "wp_mail_smtp",
+      "severity": "high",
+      "summary": "Outgoing email is sent through WP Mail SMTP (mailer: sendgrid)",
+      "fix": "Point the mailer at a mail catcher such as Mailpit, or turn it off, in the copy"
+    },
+    {
+      "platform": "woocommerce",
+      "kind": "payments",
+      "table": "wp_options",
+      "item": "woocommerce_stripe_settings",
+      "severity": "high",
+      "summary": "Payment gateway \"stripe\" is enabled in live mode",
+      "fix": "Switch the gateway to test or sandbox mode and remove the live keys in the copy"
+    },
+    {
+      "platform": "woocommerce",
+      "kind": "webhooks",
+      "table": "wp_wc_webhooks",
+      "severity": "high",
+      "summary": "2 active webhooks would send order and customer data from staging to their delivery URLs",
+      "count": 2,
+      "fix": "Set status to 'disabled' (or delete the rows) in the copy"
+    },
+    {
+      "platform": "wordpress",
+      "kind": "backups",
+      "table": "wp_options",
+      "item": "updraft_service",
+      "severity": "high",
+      "summary": "UpdraftPlus backups are scheduled and go to Amazon S3; staging would send its backups there too",
+      "fix": "Remove the remote storage in UpdraftPlus's settings in the copy, or turn its backup schedule off"
+    },
+    {
+      "platform": "woocommerce",
+      "kind": "email",
+      "table": "wp_options",
+      "severity": "high",
+      "summary": "2 WooCommerce Memberships emails are enabled; staging would send them to members, for example when a membership ends",
+      "count": 2,
+      "fix": "Turn these emails off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit"
+    },
+    {
+      "platform": "woocommerce",
+      "kind": "connection",
+      "table": "wp_options",
+      "severity": "high",
+      "summary": "The copy keeps the live site's Jetpack connection; connected services would act for the live site, and WooCommerce Shipping, Tax or Payments are active",
+      "fix": "Disconnect the copy: delete the blog token in jetpack_private_options and the auth entry in woocommerce_helper_data, or define JETPACK_STAGING_MODE in its wp-config.php"
+    },
+    {
+      "platform": "woocommerce",
+      "kind": "scheduled_jobs",
+      "table": "wp_actionscheduler_actions",
+      "severity": "medium",
+      "summary": "40 pending scheduled actions would run on staging (most common: woocommerce_cleanup_draft_orders (20), wc-admin_import_orders (14), woocommerce_scheduled_subscription_payment (6))",
+      "count": 40,
+      "fix": "Cancel pending actions in the copy, or turn off WP-Cron and Action Scheduler there"
+    },
+    {
+      "platform": "wordpress",
+      "kind": "scheduled_jobs",
+      "table": "wp_options",
+      "item": "cron",
+      "severity": "medium",
+      "summary": "5 WP-Cron events would run on staging, including UpdraftPlus backups, WPForms email summaries, WooCommerce usage tracking and Ultimate Member jobs (most common: um_daily_scheduled_events (1), updraft_backup (1), woocommerce_tracker_send_event (1))",
+      "count": 5,
+      "fix": "Turn cron off on the copy's host (DISABLE_WP_CRON stops runs on page loads, not a system cron), and change the plugins' own settings, since they schedule their events again"
+    },
+    {
+      "platform": "woocommerce",
+      "kind": "email",
+      "table": "wp_options",
+      "item": "woocommerce_new_order_settings",
+      "severity": "medium",
+      "summary": "WooCommerce emails store staff about new and cancelled orders; staging would email them too",
+      "fix": "Set these emails to off in WooCommerce > Settings > Emails in the copy, or route mail to a catcher such as Mailpit"
+    },
+    {
+      "platform": "wordpress",
+      "kind": "email",
+      "table": "wp_options",
+      "severity": "medium",
+      "summary": "1 plugin setting sends notification emails to staff addresses (for example fixture_admin_recipient)",
+      "count": 1,
+      "fix": "Point these settings at a test address, or route mail to a catcher such as Mailpit, in the copy"
+    },
+    {
+      "platform": "wordpress",
+      "kind": "email",
+      "table": "wp_postmeta",
+      "item": "_mail",
+      "severity": "medium",
+      "summary": "1 Contact Form 7 form emails its submissions to the addresses in its settings",
+      "count": 1,
+      "fix": "Route mail to a catcher such as Mailpit in the copy, or add demo_mode: on to each form's Additional Settings"
+    }
+  ],
+  "relationships": [
+    {
+      "child_table": "wp_actionscheduler_actions",
+      "child_columns": [
+        "group_id"
+      ],
+      "parent_table": "wp_actionscheduler_groups",
+      "parent_columns": [
+        "group_id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 3,
+      "found": 3
+    },
+    {
+      "child_table": "wp_actionscheduler_logs",
+      "child_columns": [
+        "action_id"
+      ],
+      "parent_table": "wp_actionscheduler_actions",
+      "parent_columns": [
+        "action_id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 100,
+      "found": 100
+    },
+    {
+      "child_table": "wp_commentmeta",
+      "child_columns": [
+        "comment_id"
+      ],
+      "parent_table": "wp_comments",
+      "parent_columns": [
+        "comment_ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 100,
+      "found": 100
+    },
+    {
+      "child_table": "wp_comments",
+      "child_columns": [
+        "comment_post_ID"
+      ],
+      "parent_table": "wp_posts",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 69,
+      "found": 69
+    },
+    {
+      "child_table": "wp_comments",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 33,
+      "found": 33
+    },
+    {
+      "child_table": "wp_postmeta",
+      "child_columns": [
+        "post_id"
+      ],
+      "parent_table": "wp_posts",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 100,
+      "found": 100
+    },
+    {
+      "child_table": "wp_posts",
+      "child_columns": [
+        "post_author"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 5,
+      "found": 5
+    },
+    {
+      "child_table": "wp_term_relationships",
+      "child_columns": [
+        "object_id"
+      ],
+      "parent_table": "wp_posts",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 70,
+      "found": 70
+    },
+    {
+      "child_table": "wp_term_relationships",
+      "child_columns": [
+        "term_taxonomy_id"
+      ],
+      "parent_table": "wp_term_taxonomy",
+      "parent_columns": [
+        "term_taxonomy_id"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 12,
+      "found": 12
+    },
+    {
+      "child_table": "wp_term_taxonomy",
+      "child_columns": [
+        "term_id"
+      ],
+      "parent_table": "wp_terms",
+      "parent_columns": [
+        "term_id"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 12,
+      "found": 12
+    },
+    {
+      "child_table": "wp_um_metadata",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "naming",
+      "status": "confirmed",
+      "checked": 19,
+      "found": 19
+    },
+    {
+      "child_table": "wp_usermeta",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "confirmed",
+      "checked": 13,
+      "found": 13
+    },
+    {
+      "child_table": "wp_wc_customer_lookup",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 59,
+      "found": 59
+    },
+    {
+      "child_table": "wp_wc_order_addresses",
+      "child_columns": [
+        "order_id"
+      ],
+      "parent_table": "wp_wc_orders",
+      "parent_columns": [
+        "id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 100,
+      "found": 100
+    },
+    {
+      "child_table": "wp_wc_order_operational_data",
+      "child_columns": [
+        "order_id"
+      ],
+      "parent_table": "wp_wc_orders",
+      "parent_columns": [
+        "id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 100,
+      "found": 100
+    },
+    {
+      "child_table": "wp_wc_orders",
+      "child_columns": [
+        "customer_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 55,
+      "found": 55
+    },
+    {
+      "child_table": "wp_wc_orders_meta",
+      "child_columns": [
+        "order_id"
+      ],
+      "parent_table": "wp_wc_orders",
+      "parent_columns": [
+        "id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 52,
+      "found": 52
+    },
+    {
+      "child_table": "wp_wc_webhooks",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 1,
+      "found": 1
+    },
+    {
+      "child_table": "wp_woocommerce_api_keys",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 1,
+      "found": 1
+    },
+    {
+      "child_table": "wp_woocommerce_order_itemmeta",
+      "child_columns": [
+        "order_item_id"
+      ],
+      "parent_table": "wp_woocommerce_order_items",
+      "parent_columns": [
+        "order_item_id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 99,
+      "found": 99
+    },
+    {
+      "child_table": "wp_woocommerce_order_items",
+      "child_columns": [
+        "order_id"
+      ],
+      "parent_table": "wp_wc_orders",
+      "parent_columns": [
+        "id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 100,
+      "found": 100
+    },
+    {
+      "child_table": "wp_woocommerce_payment_tokenmeta",
+      "child_columns": [
+        "payment_token_id"
+      ],
+      "parent_table": "wp_woocommerce_payment_tokens",
+      "parent_columns": [
+        "token_id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 20,
+      "found": 20
+    },
+    {
+      "child_table": "wp_woocommerce_payment_tokens",
+      "child_columns": [
+        "user_id"
+      ],
+      "parent_table": "wp_users",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:woocommerce",
+      "status": "confirmed",
+      "checked": 19,
+      "found": 19
+    },
+    {
+      "child_table": "wp_comments",
+      "child_columns": [
+        "comment_parent"
+      ],
+      "parent_table": "wp_comments",
+      "parent_columns": [
+        "comment_ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "unverified",
+      "note": "no sampled values to check"
+    },
+    {
+      "child_table": "wp_posts",
+      "child_columns": [
+        "post_parent"
+      ],
+      "parent_table": "wp_posts",
+      "parent_columns": [
+        "ID"
+      ],
+      "source": "preset:wordpress",
+      "status": "unverified",
+      "note": "no sampled values to check"
+    },
+    {
+      "child_table": "wp_wc_orders",
+      "child_columns": [
+        "parent_order_id"
+      ],
+      "parent_table": "wp_wc_orders",
+      "parent_columns": [
+        "id"
+      ],
+      "source": "preset:woocommerce",
+      "status": "unverified",
+      "note": "no sampled values to check"
+    }
+  ],
+  "warnings": null
+}

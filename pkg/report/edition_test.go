@@ -57,8 +57,9 @@ func TestEdition(t *testing.T) {
 	if err := JSON(&js, free); err != nil {
 		t.Fatal(err)
 	}
-	const line = "prodmask Pro makes copies of this database with the real shape and fake customers: https://prodmask.com\n"
-	if !strings.HasPrefix(txt.String(), "prodmask scan · shop · ") || !strings.HasSuffix(txt.String(), line) {
+	// The line fits on one line of a 100-column report.
+	const line = "prodmask Pro copies this database with the real shape and fake customers: https://prodmask.com\n"
+	if !strings.HasPrefix(txt.String(), "prodmask scan · shop · ") || !strings.HasSuffix(txt.String(), "\n"+line) {
 		t.Errorf("the free text report:\n%s", txt.String())
 	}
 	if !strings.Contains(md.String(), "- **Tool:** prodmask 0.13.0. ") || !strings.HasSuffix(md.String(), "---\n\n"+line) {
