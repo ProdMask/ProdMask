@@ -60,6 +60,9 @@ func TestScanNeverEchoesArguments(t *testing.T) {
 			if f == "dsn" && s.mark == password {
 				continue // the right place for a DSN: it would connect
 			}
+			if f == "dump" {
+				continue // a path that doesn't exist is an error (status 1), not a usage mistake: TestScanDumpNeverEchoesArguments
+			}
 			check(ExitUsage, s.mark, "scan", "--"+f, s.value)
 			check(ExitUsage, s.mark, "scan", "-"+f, s.value)
 			check(ExitUsage, s.mark, "scan", "--"+f+"="+s.value)

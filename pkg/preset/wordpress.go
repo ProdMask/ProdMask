@@ -122,7 +122,7 @@ func (e *env) wordpress(woo bool) (bool, bool) {
 			shops = append(shops, p)
 		}
 	}
-	e.wordpressEffects(prefixes, base, shops)
+	e.online(func() { e.wordpressEffects(prefixes, base, shops) })
 	return true, foundWoo
 }
 
@@ -232,7 +232,7 @@ func (e *env) wordpressSite(p, b string) {
 	e.rel(wp, p+"termmeta", "term_id", p+"terms", "term_id")
 	e.rel(wp, p+"links", "link_owner", users, "ID")
 
-	e.wordpressMail(p)
+	e.online(func() { e.wordpressMail(p) })
 }
 
 // Mail plugins whose settings mean the site sends email through a service.
@@ -361,9 +361,9 @@ func (e *env) woocommerce(p, b string, opts map[string]string) {
 	e.rel(wc, p+"actionscheduler_actions", "group_id", p+"actionscheduler_groups", "group_id")
 	e.rel(wc, p+"actionscheduler_logs", "action_id", p+"actionscheduler_actions", "action_id")
 
-	e.wooGateways(p)
-	e.wooWebhooks(p)
-	e.actionScheduler(p)
+	e.online(func() { e.wooGateways(p) })
+	e.online(func() { e.wooWebhooks(p) })
+	e.online(func() { e.actionScheduler(p) })
 }
 
 func yes(v string) bool {

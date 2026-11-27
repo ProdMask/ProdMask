@@ -130,6 +130,8 @@ With no DSN at all, the scan names a config it finds in the current folder.
 | Flag | Default | |
 |---|---|---|
 | `--project` | | read the database settings from the app's config in this folder, instead of `--dsn` |
+| `--dump` | | read this SQL dump file, plain or gzip, instead of a database (see [Check a dump file](#check-a-dump-file)) |
+| `--database` | | with `--dump`: the database to scan, when the file holds several |
 | `--format` | `text` | `text`, `markdown` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--config-out` | | also write a starter masking config, `prodmask.yml` |
@@ -233,6 +235,18 @@ claude mcp add prodmask --env PRODMASK_DSN='mysql://agent:…@127.0.0.1:3306/sho
 ```
 
 Give the agent a login of its own that can only read, and point it at a prodmask Pro copy if you can: with `--copy`, a checked copy shows its masked values as stored. See [docs/coding-agents.md](docs/coding-agents.md) for what it does and doesn't catch, the limits, and the setup for each client.
+
+## Check a dump file
+
+`prodmask scan --dump` reads a SQL dump file, plain or gzip, in place of a database, and reports what a scan would find in it. Run it on the file your masking tool wrote, before the file goes anywhere. It needs no server.
+
+```bash
+prodmask scan --dump shop-masked.sql.gz --fail-on high
+```
+
+A finding is a shape: a masked value can look the same as a real one, and only a sample of rows is judged. A statement the reader couldn't read is listed in the report and fails `--fail-on`. See [docs/dump-check.md](docs/dump-check.md) for what it can't tell you, how to run it after `mysqldump`, gdpr-dump and myanon, and the exit statuses.
+
+The scan judges shapes. To count the real production values a dump still holds, use the leak check on it: `prodmask leak-check compare --dump`, with a hash file made from production (see [Check a staging database for real values](#check-a-staging-database-for-real-values)).
 
 ## What it does to your database
 

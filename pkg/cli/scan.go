@@ -45,6 +45,8 @@ func runScan(ctx context.Context, env *Env, args []string) int {
 	configOut := fs.String("config-out", "", "also write a starter masking config (YAML) to this file")
 	force := fs.Bool("force", false, "overwrite the files given to --out and --config-out")
 	presetName := fs.String("preset", "auto", "platform presets: auto, none, "+strings.Join(preset.Names, ", "))
+	dump := fs.String("dump", "", "scan this SQL dump file (plain or gzip) instead of a database: a path, read twice;\nit judges what the file holds, so run it on a masked dump")
+	database := fs.String("database", "", "with --dump: the database to scan, when the file holds several")
 	timeout := fs.Duration("timeout", 10*time.Second, "server-side time limit for each statement")
 	failOn := fs.String("fail-on", "none", "exit with status 3 if anything at or above this severity is found:\nnone, low, medium, high or critical")
 	verbose := fs.Bool("verbose", false, "also show low-confidence matches and inferred relationships, and the evidence,\nkinds of data and side-effect sentences the report otherwise shortens")
@@ -57,6 +59,16 @@ names, counts and categories, never the sampled values.
 
 Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 --fail-on.
+
+With --dump FILE it scans a SQL dump file in place of a database, to check
+what a masker left behind. It reads the file twice, without a server: the
+structure from its CREATE TABLE statements, and up to --sample-rows rows of
+each table, the ones a scan of a database reads. It judges the names and values
+that are in the file. It doesn't check side effects (those read live settings
+and queues through a server), the bodies of triggers, routines, events and
+views, or IDENTIFIED BY passwords. A statement it can't read is listed in the
+report and fails --fail-on with status 1, after the report. --dsn, --project,
+--timeout, --meta-sample-rows and --config-out don't go with --dump.
 `
 	if ok, code := parseQuiet(env, "scan", fs, usage, args); !ok {
 		return code
@@ -75,6 +87,29 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 	if err != nil {
 		return usageErr("the value of --fail-on isn't valid: it's none, low, medium, high or critical")
 	}
+	// A flag given empty, as by a script's unset variable, still counts as
+	// given.
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	if given["database"] && !given["dump"] {
+		return usageErr("--database goes with --dump")
+	}
+	if given["dump"] {
+		for _, f := range []string{"dsn", "project", "timeout", "meta-sample-rows", "config-out"} {
+			if given[f] {
+				return usageErr("--%s doesn't go with --dump", f)
+			}
+		}
+		switch *dump {
+		case "":
+			return usageErr("--dump is empty: give the dump file's path")
+		case "-":
+			return usageErr("--dump needs a file's path, not standard input: it reads the file twice")
+		}
+	}
+	if !*noSamples && given["dump"] && *sampleRows < 1 {
+		return usageErr("--sample-rows must be at least 1 (or use --no-samples)")
+	}
 	if !*noSamples && (*sampleRows < 1 || *metaRows < 1) {
 		return usageErr("--sample-rows and --meta-sample-rows must be at least 1 (or use --no-samples)")
 	}
@@ -90,10 +125,13 @@ Exit status: 0 done, 1 error, 2 bad usage, 3 found something at or above
 		}
 	}
 
-	// A flag given empty, as by a script's unset variable, still counts as
-	// given.
-	given := map[string]bool{}
-	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	if given["dump"] {
+		return runScanDump(ctx, env, dumpScan{
+			path: *dump, database: *database, format: *format, out: *out, verbose: *verbose, noColor: *noColor,
+			threshold: threshold, failOn: *failOn,
+			opts: scan.Options{SampleRows: *sampleRows, Samples: !*noSamples, Preset: *presetName, Version: env.App.Version},
+		})
+	}
 	var (
 		cfg  *mysql.Config
 		proj *projectdb.Project

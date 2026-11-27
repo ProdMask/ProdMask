@@ -29,7 +29,7 @@ PRODMASK_PASSWORD='…' prodmask leak-check hash --dsn 'mysql://prodmask_ro@prod
 PRODMASK_PASSWORD='…' prodmask leak-check compare --dsn 'mysql://prodmask_ro@staging.internal:3306/shop' --key-file leak.key --hashes shop.leakhashes.json --fail-on high
 ```
 
-`--dsn` is required on both steps, and `PRODMASK_DSN` is ignored: a wrong source gives a comforting zero, and a wrong target reads whole columns on production. **`compare` belongs on staging. Never point it at production.**
+`--dsn` is required on both steps unless a step reads a dump file instead (see [a dump file](#a-dump-file)), and `PRODMASK_DSN` is ignored: a wrong source gives a comforting zero, and a wrong target reads whole columns on production. **`compare` belongs on staging. Never point it at production.**
 
 Run both steps from one machine if it can reach both databases, so the file never moves. Otherwise move it yourself, with something like `scp`. The tool never moves it.
 
@@ -37,19 +37,23 @@ Run both steps from one machine if it can reach both databases, so the file neve
 
 | Flag | Default | |
 |---|---|---|
-| `--dsn` | required | production's connection string |
+| `--dsn` | | production's connection string. Give this or `--dump`, not both |
+| `--dump` | | a dump file of production to read in place of a server: a path, never `-`. See [hash from a dump](#hash-from-a-dump) |
+| `--database` | | with `--dump`: the database of the dump to read, when the file holds several |
 | `--out` | required | the file to write. There's no way to send it to standard output, so it can't land in a CI log |
 | `--key-file` | `$PRODMASK_LEAK_KEY` | the file holding the key |
 | `--allow-email` | | keep staff addresses out: a domain with its subdomains, or an exact address. Can be given many times |
 | `--preset` | `auto` | as in `scan` |
-| `--timeout` | `10s` | server-side limit for each statement |
+| `--timeout` | `10s` | server-side limit for each statement. Not allowed with `--dump` |
 | `--force` | | overwrite `--out` |
 
 ### `compare`
 
 | Flag | Default | |
 |---|---|---|
-| `--dsn` | required | staging's connection string |
+| `--dsn` | | staging's connection string. Give this or `--dump`, not both |
+| `--dump` | | a dump file of staging to read in place of a server, or `-` for standard input. See [a dump file](#a-dump-file) |
+| `--database` | | with `--dump`: the database of the dump to read |
 | `--hashes` | required | the file `hash` wrote |
 | `--key-file` | `$PRODMASK_LEAK_KEY` | the file holding the key |
 | `--allow-email` | | skip staff addresses, as on `hash`. You can add one here without running `hash` again |
@@ -58,11 +62,65 @@ Run both steps from one machine if it can reach both databases, so the file neve
 | `--format` | `text` | `text` or `json` |
 | `--out` | stdout | write the report to a file |
 | `--max-time` | `1h` | the limit on the whole read, 0 for none |
-| `--timeout` | `60s` | server-side limit for each statement |
+| `--timeout` | `60s` | server-side limit for each statement. Not allowed with `--dump` |
 | `--force` | | overwrite `--out` |
 | `--no-color` | | plain text report without colours (also: `$NO_COLOR`) |
 
 The last line on standard error always says what was found, so a CI log has it even with `--out`. With no match, that line says a zero isn't proof.
+
+## A dump file
+
+`compare` can read a dump file of staging in place of a server, for a copy that was made as a file, or by a masking tool that works from a dump to a dump:
+
+```bash
+prodmask leak-check compare --dump staging-masked.sql.gz --key-file leak.key --hashes shop.leakhashes.json --fail-on high
+```
+
+```bash
+gunzip -c staging-masked.sql.gz | prodmask leak-check compare --dump - --database shop --key-file leak.key --hashes shop.leakhashes.json
+```
+
+It needs no server. The file is read once, plain or gzip, by the same reader as [`scan --dump`](dump-check.md), and every value of the columns and keys in the hash file is counted as it passes, through the same extractor and hashes as on a database. Text is cut at the same number of characters as the hash file's column, as a server cuts it. A dump and the database loaded from it give the same counts, unless the dump drops or empties a table after its rows.
+
+- **`--database`** limits the read to one database of the dump. Without it, the first database that holds a table of the hash file is read. If a second database holds a table of the hash file too, the check stops with status 2 and no report, and says to pass `--database`: from standard input there's no way to list the databases first. A dump that never names its database, as `mysqldump` writes one database without `--databases`, holds its tables in an unnamed one, which `--database` then names, as for `scan --dump`; if a named database in the file holds a table of the hash file too, the check stops with status 2. Reports show that database as "an unnamed database".
+- **`--timeout` isn't allowed,** since no statement is sent. `--max-time` limits the read, and a column it stops is reported as stopped.
+- **A path is shown nowhere.** The report names the file by its base name, or "standard input". Errors opening it say why in fixed words, and never repeat the path.
+- **The report says "dump file" in place of the server,** "not in the dump" in place of "not on staging", and ends with a line that says every value was read and that production's hashes are a sample, so a zero isn't proof. The JSON report carries the same line under `dump`, with the file's counts and the statements it couldn't read.
+
+**What the gate does with a dump.** Every state but "read" fails `--fail-on`, as on a database. A column of a dump is:
+- read in whole;
+- not in the dump: the table or column isn't there;
+- unreadable: a view, a binary column, or a table the dump gives rows for but never creates and whose INSERTs name no columns;
+- stopped by `--max-time`;
+- stopped because a statement of its table wasn't read: an `INSERT ... SELECT`, for example, or a form the reader doesn't follow. The columns of the other tables are still read;
+- stopped because a statement wasn't read and its table can't be told, which stops every column.
+
+A match still exits 3 first. An unread statement of a table the hash file doesn't name, or of another database than the one read, costs nothing. A file that is cut short or a gzip that is damaged gives the report of what was read, then exit 1 whatever `--fail-on` says, and a file with no SQL statement the reader recognises gives exit 1 and no report.
+
+### Hash from a dump
+
+`hash` reads a dump file too, as production's side. A masking tool that works from a dump to a dump, as myanon does, can then be checked with no server at all:
+
+```
+prodmask leak-check key --out leak.key
+prodmask leak-check hash --dump prod.sql.gz --key-file leak.key --out shop.leakhashes.json
+myanon -f myanon.conf < prod.sql > masked.sql
+prodmask leak-check compare --dump masked.sql --key-file leak.key --hashes shop.leakhashes.json --fail-on high
+```
+
+The file is read three times, plain or gzip, so it takes a path: `-` is refused, and so is `--timeout`. The first two passes are those of [`scan --dump`](dump-check.md), so the same columns are flagged. The third keeps the sample, as `hash` does on a server, with nothing but keyed hashes left of it:
+
+- a table of 3,000 rows or fewer is sampled whole, and its columns are marked exact;
+- a larger table is sampled at every k-th row in file order, where k is its rows divided by 3,000, rounded up;
+- for each flagged key of a key/value table, up to 3,000 of its values are sampled the same way over that key's rows, so a key of 3,000 rows or fewer is read whole too;
+- the values of one table that are hashed are limited to 64 MiB, so a table of very wide rows is sampled from its first rows only, with a warning.
+
+The hash file has the same format as one made on a database, and its database is the dump's. The command ends with "Sampled up to 3,000 rows of each flagged table in the dump." on standard error. If the file holds several databases, `--database` picks one.
+
+**Failing closed.** `hash --dump` has no gate of its own, so it uses `compare`'s:
+
+- a statement of a sampled table that the reader couldn't read puts that table's columns in the file's left-out list as not read. `compare` counts them as unchecked, so `--fail-on` fails against that file;
+- a statement that wasn't read and whose table can't be told, an SQL mode the reader can't work out, or a file whose size or modification time changed while it was read, stops the command with status 1 and no file, since no sample can be trusted. An unread statement of a table that isn't sampled, or of another database than the one read, costs nothing.
 
 ## The key
 

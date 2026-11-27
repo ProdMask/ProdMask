@@ -17,12 +17,20 @@ import (
 // "sampled" and "found" so that a zero under it can't read as "none".
 const LeakHeadline = "Sampled production values found on this staging database"
 
+// LeakHeadlineDump is the same question, asked of a dump file.
+const LeakHeadlineDump = "Sampled production values found in this dump"
+
 // leakProLine ends the free build's text report: one line about the paid
 // product, with a link of its own and no tracking, the same for everyone. A
 // build with an edition prints none.
 const leakProLine = "prodmask Pro makes staging copies with fake customers and checks the result row by row: https://prodmask.com/leak-check"
 
 const leakDocs = "https://github.com/ProdMask/ProdMask/blob/main/docs/leak-check.md"
+
+// UnnamedDatabase stands in for the name of a database that a dump never
+// names, wherever a report or a summary shows that name. A live database
+// always has one.
+const UnnamedDatabase = "an unnamed database"
 
 // LeakLimits is the "How to read this" list. Every report carries it, JSON
 // included, with n, the sample's size, in the odds.
@@ -39,6 +47,15 @@ func LeakLimits(n int) []string {
 			"so copies of them on staging aren't found.",
 		"Treat the hash file as personal data. Keep it as you keep production data, and delete it when you're done: " + leakDocs,
 	}
+}
+
+// LeakLimitsDump is LeakLimits for a check of a dump file, which speaks of the
+// dump where the other speaks of the staging database.
+func LeakLimitsDump(n int) []string {
+	l := LeakLimits(n)
+	l[1] = strings.Replace(l[1], "prodmask scan on staging samples for them.", "prodmask scan --dump samples for them.", 1)
+	l[2] = strings.Replace(l[2], "so copies of them on staging aren't found.", "so copies of them in the dump aren't found.", 1)
+	return l
 }
 
 // LeakLine is the report's line about a column, from its numbers.
@@ -130,15 +147,27 @@ func LeakText(w io.Writer, res *model.LeakResult, colors bool) error {
 	if res.Edition != "" {
 		title = toolName(res.Edition, res.Version) + " leak-check"
 	}
-	pf("%s %s\n", st.bold(title), st.dim("· "+res.Database+" · "+leakServerLine(res)))
+	where := "· " + res.Database + " · " + leakServerLine(res)
+	if res.Dump != nil && res.Database == "" {
+		where = "· " + leakServerLine(res)
+	}
+	pf("%s %s\n", st.bold(title), st.dim(where))
+	from := res.Hashes.Database
+	if from == "" {
+		from = UnnamedDatabase
+	}
 	pf("Compared with values sampled from %s on %s · %d of %d columns read · %s rows · %s\n\n",
-		res.Hashes.Database, res.Hashes.CreatedAt.Format("2006-01-02"), s.ColumnsRead, s.Columns, thousands(s.RowsRead), seconds(s.DurationMillis))
+		from, res.Hashes.CreatedAt.Format("2006-01-02"), s.ColumnsRead, s.Columns, thousands(s.RowsRead), seconds(s.DurationMillis))
 
 	if res.NothingRead() {
-		pf("%s\n", st.bold("Nothing was read on this staging database, so nothing is known about it."))
-		pf("  None of the %d columns in the hash file could be read. Check the database name, the user's rights and the list below.\n\n", s.Columns)
+		pf("%s\n", st.bold("Nothing was read "+leakWhere(res, "on this staging database", "in this dump")+", so nothing is known about it."))
+		if res.Dump != nil {
+			pf("  None of the %d columns in the hash file could be read from the dump. Check that it holds the tables the hash file names, and the list below.\n\n", s.Columns)
+		} else {
+			pf("  None of the %d columns in the hash file could be read. Check the database name, the user's rights and the list below.\n\n", s.Columns)
+		}
 	} else {
-		pf("%s\n", st.bold(LeakHeadline))
+		pf("%s\n", st.bold(leakWhere(res, LeakHeadline, LeakHeadlineDump)))
 		switch {
 		case s.ColumnsRead == 0:
 			pf("  No column was read in whole.\n")
@@ -203,13 +232,27 @@ func LeakText(w io.Writer, res *model.LeakResult, colors bool) error {
 	for _, l := range res.Limits {
 		pf("  - %s\n", l)
 	}
+	if res.Dump != nil {
+		pf("\n%s\n", res.Dump.Judged)
+	}
 	if res.Edition == "" {
 		pf("\n%s\n", st.dim(leakProLine))
 	}
 	return b.Flush()
 }
 
+// leakWhere picks the words of a database check or of a dump check.
+func leakWhere(res *model.LeakResult, database, dump string) string {
+	if res.Dump != nil {
+		return dump
+	}
+	return database
+}
+
 func leakServerLine(res *model.LeakResult) string {
+	if res.Dump != nil {
+		return leakDumpServerLine(res)
+	}
 	return serverLine(&model.Result{Server: res.Server})
 }
 
@@ -263,7 +306,11 @@ func notReadLines(res *model.LeakResult) [][2]string {
 	}
 	for _, c := range res.Columns {
 		if c.State != model.LeakRead {
-			add(c.Location(), notReadWords(c), c.Excepted)
+			why := notReadWords(c)
+			if res.Dump != nil {
+				why = leakDumpWords(c)
+			}
+			add(c.Location(), why, c.Excepted)
 		}
 	}
 	for _, l := range res.LeftOut {

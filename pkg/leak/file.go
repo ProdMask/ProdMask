@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ProdMask/ProdMask/pkg/model"
+	"github.com/ProdMask/ProdMask/pkg/report"
 )
 
 const (
@@ -125,5 +126,9 @@ func (f *File) CheckKey(k Key) error {
 
 // String keeps a file's hashes out of anything that prints one by accident.
 func (f *File) String() string {
-	return fmt.Sprintf("hash file of %s: %d columns", f.Database, len(f.Columns))
+	from := f.Database
+	if from == "" {
+		from = report.UnnamedDatabase
+	}
+	return fmt.Sprintf("hash file of %s: %d columns", from, len(f.Columns))
 }

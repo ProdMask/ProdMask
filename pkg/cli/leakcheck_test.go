@@ -140,7 +140,7 @@ func TestLeakCheckUsageErrors(t *testing.T) {
 		{[]string{"key"}, "--out is required"},
 		{[]string{"key", "--out", key}, "never overwritten"},
 		{[]string{"hash", "--dsn", "mysql://u@x/d"}, "--out is required"},
-		{[]string{"hash", "--out", filepath.Join(dir, "n"), "--key-file", key}, "--dsn is required; it never comes from $PRODMASK_DSN"},
+		{[]string{"hash", "--out", filepath.Join(dir, "n"), "--key-file", key}, "--dsn or --dump is required; --dsn never comes from $PRODMASK_DSN"},
 		{[]string{"hash", "--out", existing, "--dsn", "mysql://u@x/d"}, "already exists; use --force"},
 		{[]string{"hash", "--out", filepath.Join(dir, "n"), "--dsn", "mysql://u@x/d"}, "no key: pass --key-file or set $PRODMASK_LEAK_KEY"},
 		{[]string{"hash", "--out", filepath.Join(dir, "n"), "--allow-email", "com"}, "neither an address nor a domain"},

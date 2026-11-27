@@ -84,20 +84,7 @@ func Compare(ctx context.Context, sess *dbconn.Session, f *File, key Key, opts C
 	res.Columns = make([]model.LeakColumn, len(f.Columns))
 	reads := groupColumns(schema, f, key, res.Columns)
 
-	domains := slices.Clone(f.AllowDomains)
-	addresses := f.AllowedAddresses
-	if opts.Allow != nil {
-		for _, d := range opts.Allow.Domains {
-			if !slices.Contains(domains, d) {
-				domains = append(domains, d)
-			}
-		}
-		addresses += opts.Allow.Addresses()
-	}
-	allow := &Allowlist{Domains: domains}
-	if opts.Allow != nil {
-		allow.addresses = opts.Allow.addresses
-	}
+	allow, domains, addresses := mergeAllow(f, opts.Allow)
 	ex := newExtractor(allow)
 	hs := key.hasher(f.Salt)
 
@@ -201,32 +188,62 @@ func groupColumns(schema *model.Schema, f *File, key Key, out []model.LeakColumn
 			c.State = state
 			continue
 		}
-		loc := model.LeakLocation(fc.Table, fc.Column, fc.MetaKey)
-		t := targets[loc]
-		if t == nil {
-			t = &target{file: fc, subjects: map[model.LeakKind]*subject{}}
-			targets[loc] = t
-			if fc.MetaKey == "" {
-				r.plain = append(r.plain, t)
-			} else {
-				r.keyed = append(r.keyed, t)
-				r.keyCol, r.valCol = r.table.Column(fc.KeyColumn), r.table.Column(fc.Column)
-			}
+		if addTarget(r, targets, hs, fc, c) && fc.MetaKey != "" {
+			r.keyCol, r.valCol = r.table.Column(fc.KeyColumn), r.table.Column(fc.Column)
 		}
-		if fc.Whole {
-			if fc.Kind == model.LeakPhone {
-				t.wants.loosePhone = true
-			} else {
-				t.wants.whole = append(t.wants.whole, fc.Kind)
-			}
-		}
-		s := &subject{col: c, prefix: hs.prefix(fc.Table, fc.Column, fc.MetaKey, fc.Kind), found: make(map[[hashLen]byte]bool, fc.Values)}
-		for b := fc.Hashes; len(b) > 0; b = b[hashLen:] {
-			s.found[[hashLen]byte(b[:hashLen])] = false
-		}
-		t.subjects[fc.Kind] = s
 	}
 	return order
+}
+
+// mergeAllow joins the hash file's allowlist with --allow-email's, and says
+// what the two hold.
+func mergeAllow(f *File, extra *Allowlist) (allow *Allowlist, domains []string, addresses int) {
+	domains = slices.Clone(f.AllowDomains)
+	addresses = f.AllowedAddresses
+	if extra != nil {
+		for _, d := range extra.Domains {
+			if !slices.Contains(domains, d) {
+				domains = append(domains, d)
+			}
+		}
+		addresses += extra.Addresses()
+	}
+	allow = &Allowlist{Domains: domains}
+	if extra != nil {
+		allow.addresses = extra.addresses
+	}
+	return allow, domains, addresses
+}
+
+// addTarget sets one file column's kind out in its table's read: the target
+// of its location, made when it is the first there, and the kind's subject.
+// It reports whether the target is new.
+func addTarget(r *tableRead, targets map[string]*target, hs *hasher, fc FileColumn, c *model.LeakColumn) (fresh bool) {
+	loc := model.LeakLocation(fc.Table, fc.Column, fc.MetaKey)
+	t := targets[loc]
+	if t == nil {
+		fresh = true
+		t = &target{file: fc, subjects: map[model.LeakKind]*subject{}}
+		targets[loc] = t
+		if fc.MetaKey == "" {
+			r.plain = append(r.plain, t)
+		} else {
+			r.keyed = append(r.keyed, t)
+		}
+	}
+	if fc.Whole {
+		if fc.Kind == model.LeakPhone {
+			t.wants.loosePhone = true
+		} else {
+			t.wants.whole = append(t.wants.whole, fc.Kind)
+		}
+	}
+	s := &subject{col: c, prefix: hs.prefix(fc.Table, fc.Column, fc.MetaKey, fc.Kind), found: make(map[[hashLen]byte]bool, fc.Values)}
+	for b := fc.Hashes; len(b) > 0; b = b[hashLen:] {
+		s.found[[hashLen]byte(b[:hashLen])] = false
+	}
+	t.subjects[fc.Kind] = s
+	return fresh
 }
 
 // findTable finds a table on staging, whose name's letter case may differ from

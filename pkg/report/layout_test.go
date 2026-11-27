@@ -349,7 +349,14 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 	t.Helper()
 	k := &walker{t: t, w: w, lines: reportLines(text), ok: true}
 
-	k.text("", 2, "prodmask scan · "+res.Database+" · "+serverLine(res), "the title")
+	source := res.Database + " · " + serverLine(res)
+	if res.Dump != nil {
+		source = res.Database + " · " + dumpSource(res)
+		if res.Database == "" {
+			source = dumpSource(res)
+		}
+	}
+	k.text("", 2, "prodmask scan · "+source, "the title")
 	if len(res.Platforms) > 0 {
 		var ps []string
 		for _, p := range res.Platforms {
@@ -367,7 +374,11 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 	} else {
 		scanned += " · " + namesOnly(res)
 	}
-	k.text("", 2, scanned+" · "+seconds(s.DurationMillis), "the scanned line")
+	if res.Dump != nil {
+		k.text("", 2, dumpRead(res), "the read line")
+	} else {
+		k.text("", 2, scanned+" · "+seconds(s.DurationMillis), "the scanned line")
+	}
 	k.blank("the header")
 
 	if order, by := tableFindings(res, verbose); len(order) > 0 {
@@ -455,7 +466,7 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 	k.blank("Relationships")
 
 	width := labelWidth(res)
-	if len(res.SideEffects) > 0 {
+	if len(res.SideEffects) > 0 && res.Dump == nil {
 		k.text("", 2, "How to stop each one · "+fmt.Sprint(len(res.SideEffects)), "the fixes' heading")
 		col := 2 + width + 2
 		for _, se := range res.SideEffects {
@@ -476,9 +487,16 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 		k.blank("the fixes")
 	}
 
-	if len(res.Warnings) > 0 {
-		k.text("", 2, "Warnings · "+fmt.Sprint(len(res.Warnings)), "the warnings' heading")
-		for _, wn := range res.Warnings {
+	// A dump's warnings go on with its unread statements, and their total
+	// counts every unread statement, listed or not.
+	warnings, warned := res.Warnings, len(res.Warnings)
+	if res.Dump != nil {
+		warnings = append(warnings[:len(warnings):len(warnings)], dumpUnread(res)...)
+		warned += res.Dump.Unread
+	}
+	if len(warnings) > 0 {
+		k.text("", 2, "Warnings · "+fmt.Sprint(warned), "the warnings' heading")
+		for _, wn := range warnings {
 			k.text("  ! ", 4, wn, "a warning")
 		}
 		k.blank("the warnings")
@@ -492,7 +510,11 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 	}
 	k.text("", 2, Headline+" · "+plural(total, "finding"), "the headline")
 	if len(groups) == 0 {
-		k.text("  ", 4, "Nothing found. Check the warnings above: a scan user that cannot read the tables finds nothing too.", "nothing found")
+		nothing := "Nothing found. Check the warnings above: a scan user that cannot read the tables finds nothing too."
+		if res.Dump != nil {
+			nothing = "Nothing found. Check the warnings above: statements that weren't read can hide findings."
+		}
+		k.text("  ", 4, nothing, "nothing found")
 	}
 	for _, g := range groups {
 		prefix := "  " + sevLabel(g.Severity) + fmt.Sprintf(" %*d  ", digits, g.Count)
@@ -504,7 +526,7 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 	}
 	k.blank("the summary")
 
-	if len(res.SideEffects) > 0 {
+	if len(res.SideEffects) > 0 && res.Dump == nil {
 		k.text("", 2, "What staging could do to real people · "+fmt.Sprint(len(res.SideEffects)), "the side effects' heading")
 		col := 2 + 8 + 2 + width + 2
 		for _, se := range res.SideEffects {
@@ -519,10 +541,26 @@ func walkReport(t *testing.T, w int, text string, res *model.Result, verbose boo
 		}
 		k.blank("the side effects")
 	}
-
-	k.text("", 2, "Add --config-out prodmask.yml to write a starter masking config from these findings.", "the config line")
-	if res.Edition == "" {
-		k.text("", 2, wantProLine, "the Pro line")
+	if res.Dump != nil {
+		// A dump's side effects weren't checked: the heading has no total.
+		k.text("", 2, "What staging could do to real people", "the side effects' heading")
+		k.text("  ", 4, wantDumpSideEffects, "the side effects not checked")
+		k.blank("the side effects")
+		// The closing lines in their order: the bodies not judged, when the
+		// file has any, the rows judged, what a finding is, the Pro line.
+		if b := dumpBodies(res); b != "" {
+			k.text("", 2, b, "the bodies not judged")
+		}
+		k.text("", 2, res.Dump.Judged, "the rows judged")
+		k.text("", 2, wantDumpShape, "what a finding is")
+		if res.Edition == "" {
+			k.text("", 2, wantDumpProLine, "the dump's Pro line")
+		}
+	} else {
+		k.text("", 2, "Add --config-out prodmask.yml to write a starter masking config from these findings.", "the config line")
+		if res.Edition == "" {
+			k.text("", 2, wantProLine, "the Pro line")
+		}
 	}
 	if k.ok && k.i != len(k.lines) {
 		k.fail("%d lines after the closing lines", len(k.lines)-k.i)

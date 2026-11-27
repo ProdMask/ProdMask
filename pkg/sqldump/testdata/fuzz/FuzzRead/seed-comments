@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("/*M!999999\\- enable the sandbox mode */\x0a-- c\x0a#c\x0a/*!40101 SET @a=1; SET @b=2 */;\x0aDROP TABLE a; --DROP TABLE b;\x0a")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SET sql_mode=@x;\x0aINSERT INTO t VALUES ('a\\');DROP TABLE b;\x0a")

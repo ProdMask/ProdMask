@@ -325,6 +325,11 @@ type kvRead struct {
 	// look like people's names.
 	demoted bool
 	people  int
+	// heldRows, set only by a dump scan, marks the window's rows (by position
+	// in the sample) that this read already holds, so analyzeKV skips them. It
+	// stands in for pks, since a dump's rows are told apart by their position
+	// in the file, not by key.
+	heldRows []bool
 }
 
 // guard applies the key-shape guard to the keys read so far, when the
@@ -456,10 +461,16 @@ func keyRows(t *model.Table, meta *preset.MetaTable, opts Options) int {
 	return max(opts.KeySampleRows, 1)
 }
 
+// kvModeHook, set only by tests, is told the mode readKV chose for a table.
+var kvModeHook func(table string, mode kvMode)
+
 // readKV reads a key/value table in mode W or L, or decides on S. In S
 // the window comes first, and sampleKV probes afterwards.
 func readKV(ctx context.Context, sess *dbconn.Session, sm *sample.Sampler, t *model.Table, meta *preset.MetaTable, opts Options, b *budget) *kvRead {
 	kv := newKVRead()
+	if kvModeHook != nil {
+		defer func() { kvModeHook(t.Name, kv.mode) }()
+	}
 	keyCol, valueCol := kvColumns(t, meta)
 	if keyCol == nil {
 		kv.mode = modeSample
@@ -778,12 +789,14 @@ func analyzeKV(t *model.Table, s *sample.Sample, meta *preset.MetaTable, kv *kvR
 			pi = s.Index(pk.Name)
 		}
 		if ki >= 0 && vi >= 0 {
-			for _, r := range s.Rows {
+			for n, r := range s.Rows {
 				if !r[ki].Valid {
 					continue
 				}
 				k := r[ki].String
 				switch {
+				case n < len(kv.heldRows) && kv.heldRows[n]:
+					continue
 				case pi >= 0 && kv.pks[r[pi].String]:
 					continue
 				case pi < 0 && looked[k]:

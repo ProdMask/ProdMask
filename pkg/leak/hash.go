@@ -108,18 +108,9 @@ func Hash(ctx context.Context, sess *dbconn.Session, key Key, opts HashOptions) 
 	if err != nil {
 		return nil, nil, err
 	}
-	salt := make([]byte, saltLen)
-	if _, err := rand.Read(salt); err != nil {
+	f, salt, err := newHashFile(key, opts.Version, sess.Database, opts.SampleRows, opts.Allow)
+	if err != nil {
 		return nil, nil, err
-	}
-	f := &File{
-		Format: fileFormat, Version: fileVersion, Notice: fileNotice, ToolVersion: opts.Version,
-		CreatedAt: time.Now().UTC().Truncate(time.Second), Database: sess.Database,
-		Salt: salt, KeyCheck: key.keyCheck(salt), SampleRows: opts.SampleRows,
-	}
-	if opts.Allow != nil {
-		f.AllowDomains = slices.Clone(opts.Allow.Domains)
-		f.AllowedAddresses = opts.Allow.Addresses()
 	}
 	plans, leftOut := planSample(res, schema)
 	f.LeftOut = leftOut
@@ -146,6 +137,31 @@ func Hash(ctx context.Context, sess *dbconn.Session, key Key, opts HashOptions) 
 	if opts.Progress != nil {
 		opts.Progress(len(plans), len(plans), "")
 	}
+	return r.seal(res)
+}
+
+// newHashFile starts a hash file with a new salt, and returns the salt.
+func newHashFile(key Key, version, database string, sampleRows int, allow *Allowlist) (*File, []byte, error) {
+	salt := make([]byte, saltLen)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, nil, err
+	}
+	f := &File{
+		Format: fileFormat, Version: fileVersion, Notice: fileNotice, ToolVersion: version,
+		CreatedAt: time.Now().UTC().Truncate(time.Second), Database: database,
+		Salt: salt, KeyCheck: key.keyCheck(salt), SampleRows: sampleRows,
+	}
+	if allow != nil {
+		f.AllowDomains = slices.Clone(allow.Domains)
+		f.AllowedAddresses = allow.Addresses()
+	}
+	return f, salt, nil
+}
+
+// seal sorts the file once every table is sampled and returns it with the
+// warnings to show, or the error of a file with nothing to compare.
+func (r *hashRun) seal(res *model.Result) (*File, []string, error) {
+	f := r.file
 	sort.Slice(f.LeftOut, func(i, j int) bool { return f.LeftOut[i].Location < f.LeftOut[j].Location })
 	sort.SliceStable(f.Columns, func(i, j int) bool {
 		a, b := f.Columns[i], f.Columns[j]

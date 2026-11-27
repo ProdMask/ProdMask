@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SET sql_mode='';\x0aDELIMITER ;;\x0a/*!50003 SET @saved_sql_mode = @@sql_mode */ ;;\x0a/*!50003 SET sql_mode = 'NO_BACKSLASH_ESCAPES' */ ;;\x0a/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER t BEFORE INSERT ON x FOR EACH ROW BEGIN SET NEW.a = 'p\\'; END */;;\x0a/*!50003 SET sql_mode = @saved_sql_mode */ ;;\x0aDELIMITER ;\x0aINSERT INTO x VALUES ('it\\'s; DROP TABLE y;');\x0a")

@@ -43,8 +43,16 @@ func Markdown(w io.Writer, res *model.Result) error {
 	pf := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
 	s := res.Summary
 
-	pf("# prodmask scan: %s\n\n", code(res.Database))
-	pf("- **Server:** %s, user %s\n", serverLine(res), code(res.Server.User))
+	name := code(res.Database)
+	if res.Database == "" {
+		name = UnnamedDatabase
+	}
+	pf("# prodmask scan: %s\n\n", name)
+	if res.Dump != nil {
+		pf("- **Dump file:** %s\n", dumpSourceMarkdown(res))
+	} else {
+		pf("- **Server:** %s, user %s\n", serverLine(res), code(res.Server.User))
+	}
 	if len(res.Platforms) > 0 {
 		var ps []string
 		for _, p := range res.Platforms {
@@ -61,8 +69,13 @@ func Markdown(w io.Writer, res *model.Result) error {
 				thousands(s.RowsSampled), res.Options.SampleRows, res.Options.KeySampleRows)
 		}
 	}
-	pf("- **Scanned:** %d tables, %s, on %s, in %s\n", s.Tables-s.Views, sampling,
-		res.GeneratedAt.Format("2006-01-02 15:04 MST"), seconds(s.DurationMillis))
+	if res.Dump != nil {
+		pf("- **Read:** %s\n", strings.TrimPrefix(dumpRead(res), "Read "))
+		pf("- **Scanned:** %d tables, %s, on %s\n", s.Tables-s.Views, sampling, res.GeneratedAt.Format("2006-01-02 15:04 MST"))
+	} else {
+		pf("- **Scanned:** %d tables, %s, on %s, in %s\n", s.Tables-s.Views, sampling,
+			res.GeneratedAt.Format("2006-01-02 15:04 MST"), seconds(s.DurationMillis))
+	}
 	pf("- **Tool:** %s. The report lists names, counts and categories only; it contains no sampled values.\n\n",
 		toolName(res.Edition, res.Version))
 
@@ -78,7 +91,9 @@ func Markdown(w io.Writer, res *model.Result) error {
 		pf("\n")
 	}
 
-	if len(res.SideEffects) > 0 {
+	if res.Dump != nil {
+		pf("## What staging could do to real people\n\n%s\n\n", strings.ToUpper(dumpSideEffects[:1])+dumpSideEffects[1:]+".")
+	} else if len(res.SideEffects) > 0 {
 		pf("## What staging could do to real people\n\n")
 		pf("| Staging would | Severity | What | Where | Fix in the copy |\n|---|---|---|---|---|\n")
 		for _, se := range res.SideEffects {
@@ -138,12 +153,25 @@ func Markdown(w io.Writer, res *model.Result) error {
 		pf("\n")
 	}
 
-	if len(res.Warnings) > 0 {
+	warnings := res.Warnings
+	if res.Dump != nil {
+		warnings = append(warnings[:len(warnings):len(warnings)], dumpUnread(res)...)
+	}
+	if len(warnings) > 0 {
 		pf("## Warnings\n\n")
-		for _, wn := range res.Warnings {
+		for _, wn := range warnings {
 			pf("- %s\n", wn)
 		}
 		pf("\n")
+	}
+	if res.Dump != nil {
+		for _, l := range dumpClosing(res) {
+			pf("%s\n\n", l)
+		}
+		if p := dumpPro(res); p != "" {
+			pf("---\n\n%s\n", p)
+		}
+		return b.Flush()
 	}
 	if res.Edition == "" {
 		pf("---\n\n%s\n", proLine)

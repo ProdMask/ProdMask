@@ -71,9 +71,12 @@ func judgeTable(res *model.Result, t *model.Table, ts model.TableSummary, meta *
 		findings, hidden = analyzeKV(t, s, meta, kv)
 		ts.Keys = len(kv.keys)
 		if n, named := skippedSummary(t, meta, kv); n > 0 {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s were not sampled (limits: %d keys and %d MB per table, "+
-				"%d keys and %d MB per scan); %d of them match names and are listed at low confidence in the JSON report",
-				n, t.Name, lim.TableKeys, lim.TableBytes>>20, lim.ScanKeys, lim.ScanBytes>>20, named))
+			limits := fmt.Sprintf("%d keys and %d MB per table", lim.TableKeys, lim.TableBytes>>20)
+			if lim.ScanKeys > 0 { // a scan of a database has a limit for the whole scan too
+				limits += fmt.Sprintf(", %d keys and %d MB per scan", lim.ScanKeys, lim.ScanBytes>>20)
+			}
+			res.Warnings = append(res.Warnings, fmt.Sprintf("%d keys of %s were not sampled (limits: %s); "+
+				"%d of them match names and are listed at low confidence in the JSON report", n, t.Name, limits, named))
 		}
 		switch {
 		case hidden == 1:

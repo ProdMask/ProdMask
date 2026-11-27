@@ -36,7 +36,7 @@ func (e *env) magento() bool {
 		e.res.Prefixes = append(e.res.Prefixes, p)
 	}
 	pl := model.Platform{Name: mg, Label: "Magento 2", Prefix: p}
-	if e.has(p+"store", "store_id") {
+	if e.off == nil && e.has(p+"store", "store_id") {
 		if n, err := e.count("SELECT COUNT(*) FROM " + sample.QuoteIdent(p+"store") + " WHERE store_id > 0"); err == nil {
 			pl.Details = append(pl.Details, fmt.Sprintf("%d store views", n))
 		}
@@ -100,9 +100,9 @@ func (e *env) magento() bool {
 	e.rel(mg, p+"vault_payment_token", "customer_id", customers, "entity_id")
 	e.rel(mg, p+"customer_grid_flat", "entity_id", customers, "entity_id")
 
-	e.magentoPayments(p)
-	e.magentoEmail(p)
-	e.magentoCron(p)
+	e.online(func() { e.magentoPayments(p) })
+	e.online(func() { e.magentoEmail(p) })
+	e.online(func() { e.magentoCron(p) })
 	return true
 }
 
@@ -123,8 +123,8 @@ func (e *env) eavLabels(p string) func(string) string {
 	labels := map[string]string{}
 	attrs, types := p+"eav_attribute", p+"eav_entity_type"
 	if e.has(attrs, "attribute_id", "attribute_code", "entity_type_id") && e.has(types, "entity_type_id", "entity_type_code") {
-		rows, err := e.rows("SELECT a.attribute_id, a.attribute_code FROM " + sample.QuoteIdent(attrs) + " a JOIN " +
-			sample.QuoteIdent(types) + " t ON t.entity_type_id = a.entity_type_id " +
+		rows, err := e.eavRows(attrs, types, "SELECT a.attribute_id, a.attribute_code FROM "+sample.QuoteIdent(attrs)+" a JOIN "+
+			sample.QuoteIdent(types)+" t ON t.entity_type_id = a.entity_type_id "+
 			"WHERE t.entity_type_code IN ('customer', 'customer_address')")
 		if err != nil {
 			e.warn(fmt.Sprintf("could not read Magento attribute codes: %s", dbconn.ErrorText(err)))

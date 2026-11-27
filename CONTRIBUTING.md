@@ -22,6 +22,8 @@ With `PRODMASK_TEST_REQUIRE_ALL=1` as well (any value but `0` counts), a test th
 
 CI runs them on MySQL 8.4 and MariaDB 11.8. Their findings and side effects are compared with the golden files in `pkg/scan/testdata`. After a deliberate change, rewrite them with `go test ./pkg/scan -update`, with `PRODMASK_TEST_DSN` set, and review the diff line by line. The reports have golden files of their own in `pkg/report/testdata`, which `go test ./pkg/report -update` rewrites with no server.
 
+The reports on the dump of `examples/shop.sql`, in text, Markdown and JSON, are golden files in `pkg/cli/testdata/dump`, compared with no server. After a deliberate change, rewrite them with `go test ./pkg/cli -run TestScanDumpGoldens -update` and review the diff line by line.
+
 ## Test data
 
 - All of it is invented: phone numbers in the 555-01xx range, IP addresses from the documentation, benchmarking or private ranges, and made-up domain names.

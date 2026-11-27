@@ -2,6 +2,10 @@
 
 These are the changes that can change a build's result: findings that appear, go away or change severity. A `--fail-on` gate that passed may fail after an upgrade, or the other way round. Each release's notes on GitHub have the rest.
 
+## v0.17.0
+
+Adds `prodmask scan --dump FILE`, `prodmask leak-check compare --dump FILE` and `prodmask leak-check hash --dump FILE`, a new input: a SQL dump file in place of a database. Findings and severities on a database don't change.
+
 ## v0.14.0
 
 A DSN that named a charset other than utf8mb4 is now read as utf8mb4, so values that charset couldn't hold are judged as they're stored, and findings in them can appear. Session variables in a DSN, such as `?sql_mode=…`, are now ignored, with a warning, so findings that depended on one can change. On a server with a low `max_join_size`, reads it used to refuse now run, since the session turns `sql_big_selects` on, and findings in them can appear.

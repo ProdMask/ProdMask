@@ -84,6 +84,9 @@ type LeakResult struct {
 	LeftOut     []LeakLeftOut  `json:"left_out"`
 	Warnings    []string       `json:"warnings"`
 	Limits      []string       `json:"limits"`
+	// Dump describes the dump file a check read in place of a staging
+	// database; it is nil, and left out, for a database.
+	Dump *DumpInfo `json:"dump,omitempty"`
 }
 
 // NothingRead reports whether a check read nothing at all, so it knows nothing.

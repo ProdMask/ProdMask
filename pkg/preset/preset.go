@@ -105,6 +105,7 @@ func (r *Result) ColumnHint(table, column string) *detect.Hint {
 type env struct {
 	ctx     context.Context
 	q       Querier
+	off     *Offline // set when running without a server; q is nil then
 	schema  *model.Schema
 	res     *Result
 	timeout time.Duration
@@ -113,11 +114,18 @@ type env struct {
 // Detect recognises platforms and collects their hints and side effects.
 // which is "auto", "none" or one of Names.
 func Detect(ctx context.Context, q Querier, schema *model.Schema, which string, timeout time.Duration) *Result {
-	e := &env{ctx: ctx, q: q, schema: schema, timeout: timeout, res: &Result{
+	return newEnv(ctx, q, schema, timeout).detect(which)
+}
+
+func newEnv(ctx context.Context, q Querier, schema *model.Schema, timeout time.Duration) *env {
+	return &env{ctx: ctx, q: q, schema: schema, timeout: timeout, res: &Result{
 		Columns: map[string]map[string]*detect.Hint{},
 		Meta:    map[string]*MetaTable{},
 		Actions: map[string]TableAction{},
 	}}
+}
+
+func (e *env) detect(which string) *Result {
 	run := func(name string) bool { return which == "auto" || which == name }
 	found := map[string]bool{}
 	if run("wordpress") || run("woocommerce") {
@@ -242,6 +250,9 @@ func (e *env) options(table, keyCol, valueCol string, keys []string) map[string]
 	out := map[string]string{}
 	if len(keys) == 0 || !e.has(table, keyCol, valueCol) {
 		return out
+	}
+	if e.off != nil {
+		return e.off.Options(table, keyCol, valueCol, keys)
 	}
 	q := fmt.Sprintf("SELECT %s, LEFT(%s, 65535) FROM %s WHERE %s IN (%s)",
 		sample.QuoteIdent(keyCol), sample.QuoteIdent(valueCol), sample.QuoteIdent(table),

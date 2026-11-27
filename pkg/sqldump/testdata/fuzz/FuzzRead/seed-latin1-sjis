@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SET NAMES latin1;INSERT INTO t VALUES ('caf\xe9');SET NAMES sjis;INSERT INTO t VALUES ('\x83\\');DROP TABLE x;")

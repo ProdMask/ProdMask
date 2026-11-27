@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -18,6 +19,8 @@ import (
 	"github.com/ProdMask/ProdMask/pkg/model"
 	"github.com/ProdMask/ProdMask/pkg/preset"
 	"github.com/ProdMask/ProdMask/pkg/report"
+	"github.com/ProdMask/ProdMask/pkg/scan"
+	"github.com/ProdMask/ProdMask/pkg/sqldump"
 )
 
 // keyEnv is where the key can come from besides --key-file. No flag takes the
@@ -38,9 +41,17 @@ unlikely to match by chance, so real names and addresses aren't.
       Scans production, samples the columns the scan flags, and writes keyed
       hashes. Treat that file as personal data.
 
+  prodmask leak-check hash --dump FILE --key-file leak.key --out hashes.json
+      The same from a dump file of production, read three times with no server.
+      FILE is a path, not -.
+
   prodmask leak-check compare --dsn STAGING --key-file leak.key --hashes hashes.json
       Reads those columns whole on staging and counts the sampled values it
       finds. It belongs on staging: never point it at production.
+
+  prodmask leak-check compare --dump FILE --key-file leak.key --hashes hashes.json
+      The same count in a dump file of staging, read once with no server. FILE
+      can be - for standard input.
 
 The key can come from $PRODMASK_LEAK_KEY instead of --key-file. Run
 "prodmask leak-check hash -h" or "compare -h" for their flags. See
@@ -165,7 +176,9 @@ func openLeakSession(ctx context.Context, env *Env, verb, dsn string, timeout ti
 func runLeakHash(ctx context.Context, env *Env, args []string) int {
 	stdout, stderr := env.Stdout, env.Stderr
 	fs := flag.NewFlagSet("hash", flag.ContinueOnError)
-	dsn := fs.String("dsn", "", "production's connection string, as scan takes it (required; never from $PRODMASK_DSN)\n(the password may come from $PRODMASK_PASSWORD)")
+	dsn := fs.String("dsn", "", "production's connection string, as scan takes it (this or --dump; never from $PRODMASK_DSN)\n(the password may come from $PRODMASK_PASSWORD)")
+	dump := fs.String("dump", "", "a dump file of production to read in place of --dsn, plain or gzip: a path, read three times")
+	database := fs.String("database", "", "with --dump: the database of the dump to read, when the file holds several")
 	keyFile := fs.String("key-file", "", "the file holding the key (default $"+keyEnv+")")
 	out := fs.String("out", "", "the file to write the hashes to (required). Treat it as personal data")
 	force := fs.Bool("force", false, "overwrite the file given to --out")
@@ -174,11 +187,21 @@ func runLeakHash(ctx context.Context, env *Env, args []string) int {
 	presetName := fs.String("preset", "auto", "platform presets: auto, none, "+strings.Join(preset.Names, ", "))
 	timeout := fs.Duration("timeout", 10*time.Second, "server-side time limit for each statement")
 	usage := `Usage: prodmask leak-check hash --dsn PRODUCTION --out FILE [flags]
+       prodmask leak-check hash --dump FILE --out FILE [flags]
 
 Scans production as prodmask scan does, then samples the columns it flags: up to
 3,000 rows of a table, spread over its primary key, and for a key/value table
 30,000 rows of keys and the flagged keys' values. All of it is read-only and
 one statement at a time, and nothing it reads is kept but keyed hashes.
+
+With --dump FILE, production is a dump file, read three times with no server:
+twice to scan it and once to sample it, up to 3,000 rows of each flagged table
+and 3,000 values of each flagged key, spread over the file. FILE is a path, so
+not - for standard input, and --timeout doesn't apply. A statement of a sampled
+table that the reader can't read leaves that table's columns out as not read,
+which fails compare's --fail-on. A statement whose table can't be told, an SQL
+mode the reader can't work out, or a file that changes while it's read stops the
+command with exit 1 and no file.
 
 Treat the file as personal data until you delete it. Whoever holds the key and
 the file can test a guess against it.
@@ -190,6 +213,25 @@ Exit status: 0 done, 1 error or nothing to hash, 2 bad usage.
 	}
 	if *out == "" {
 		fmt.Fprintln(stderr, "prodmask leak-check hash: --out is required")
+		return ExitUsage
+	}
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	switch {
+	case given["dsn"] && given["dump"]:
+		fmt.Fprintln(stderr, "prodmask leak-check hash: --dsn doesn't go with --dump")
+		return ExitUsage
+	case given["dump"] && given["timeout"]:
+		fmt.Fprintln(stderr, "prodmask leak-check hash: --timeout doesn't go with --dump")
+		return ExitUsage
+	case given["database"] && !given["dump"]:
+		fmt.Fprintln(stderr, "prodmask leak-check hash: --database goes with --dump; a --dsn names its database")
+		return ExitUsage
+	case given["dump"] && *dump == "":
+		fmt.Fprintln(stderr, "prodmask leak-check hash: --dump is empty: give the dump file's path")
+		return ExitUsage
+	case *dump == "-":
+		fmt.Fprintln(stderr, "prodmask leak-check hash: --dump needs a file's path, not standard input: it reads the file three times")
 		return ExitUsage
 	}
 	if *presetName != "auto" && *presetName != "none" && !slices.Contains(preset.Names, *presetName) {
@@ -218,6 +260,13 @@ Exit status: 0 done, 1 error or nothing to hash, 2 bad usage.
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
+	if *dump != "" {
+		return runLeakHashDump(ctx, env, *dump, *database, *out, *presetName, allowed, key)
+	}
+	if *dsn == "" {
+		fmt.Fprintln(stderr, "prodmask leak-check hash: --dsn or --dump is required; --dsn never comes from $PRODMASK_DSN")
+		return ExitUsage
+	}
 	sess, code := openLeakSession(ctx, env, "hash", *dsn, *timeout)
 	if sess == nil {
 		return code
@@ -260,7 +309,11 @@ func writeHashSummary(w io.Writer, f *leak.File) {
 	for _, c := range f.Columns {
 		total += int64(c.Values)
 	}
-	fmt.Fprintf(w, "Hash file written: %s values sampled from %d columns of %s.\n", report.Count(total), len(f.Columns), report.Clean(f.Database))
+	from := report.Clean(f.Database)
+	if f.Database == "" {
+		from = report.UnnamedDatabase
+	}
+	fmt.Fprintf(w, "Hash file written: %s values sampled from %d columns of %s.\n", report.Count(total), len(f.Columns), from)
 	for _, c := range f.Columns {
 		fmt.Fprintf(w, "  %s  %s  %s\n", report.Clean(model.LeakLocation(c.Table, c.Column, c.MetaKey)), c.Kind.Label(), report.Count(int64(c.Values)))
 	}
@@ -273,9 +326,11 @@ func writeHashSummary(w io.Writer, f *leak.File) {
 }
 
 func runLeakCompare(ctx context.Context, env *Env, args []string) int {
-	stdout, stderr := env.Stdout, env.Stderr
+	stderr := env.Stderr
 	fs := flag.NewFlagSet("compare", flag.ContinueOnError)
-	dsn := fs.String("dsn", "", "staging's connection string, as scan takes it (required; never from $PRODMASK_DSN)\n(the password may come from $PRODMASK_PASSWORD)")
+	dsn := fs.String("dsn", "", "staging's connection string, as scan takes it (this or --dump; never from $PRODMASK_DSN)\n(the password may come from $PRODMASK_PASSWORD)")
+	dump := fs.String("dump", "", "a dump file of staging to read in place of --dsn, plain or gzip, or - for standard input")
+	database := fs.String("database", "", "with --dump: the database of the dump to read. Without it, the first database that\nholds a table of the hash file is read, and a second one that does stops the check")
 	keyFile := fs.String("key-file", "", "the file holding the key (default $"+keyEnv+")")
 	hashes := fs.String("hashes", "", "the file prodmask leak-check hash wrote (required)")
 	var allow, except listFlag
@@ -289,11 +344,17 @@ func runLeakCompare(ctx context.Context, env *Env, args []string) int {
 	timeout := fs.Duration("timeout", time.Minute, "server-side time limit for each statement. Tables with a single integer\nprimary key are read in short chunks; any other table is one statement")
 	noColor := fs.Bool("no-color", false, "plain text report without colours (also: $NO_COLOR)")
 	usage := `Usage: prodmask leak-check compare --dsn STAGING --hashes FILE [flags]
+       prodmask leak-check compare --dump FILE --hashes FILE [flags]
 
 Reads on staging, whole, the columns the hash file names, and counts the sampled
 values it finds. The report holds names and counts, never a value or a row. A
 zero isn't proof that none are there. It reads whole columns, so it belongs on
 staging: never point it at production.
+
+With --dump it reads every value of those columns in a dump file, once, with no
+server. A statement the reader can't read stops the columns of its table, or all
+of them when its table can't be told; a column that isn't read in full fails
+--fail-on. --timeout doesn't apply, and --max-time does.
 
 Exit status: 0 done, 1 error, nothing read, or with --fail-on a column that
 couldn't be checked in full, 2 bad usage, 3 a sampled value at or above --fail-on
@@ -308,6 +369,18 @@ turned up.
 	}
 	if *hashes == "" {
 		return usageErr("--hashes is required")
+	}
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	switch {
+	case given["dsn"] && given["dump"]:
+		return usageErr("--dsn doesn't go with --dump")
+	case given["dump"] && given["timeout"]:
+		return usageErr("--timeout doesn't go with --dump")
+	case given["database"] && !given["dump"]:
+		return usageErr("--database goes with --dump; a --dsn names its database")
+	case given["dump"] && *dump == "":
+		return usageErr("--dump is empty: give the dump file's path, or - for standard input")
 	}
 	if *format != "text" && *format != "json" {
 		return usageErr("the value of --format isn't valid: it's text or json")
@@ -345,6 +418,14 @@ turned up.
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
+	out := leakOutput{format: *format, path: *reportOut, noColor: *noColor, threshold: threshold, failOn: *failOn}
+	if *dump != "" {
+		return runLeakCompareDump(ctx, env, out, *dump, file, key, leak.CompareDumpOptions{
+			Allow: allowed, FailExcept: except, MaxTime: *maxTime, Version: env.App.Version, Database: *database})
+	}
+	if *dsn == "" {
+		return usageErr("--dsn or --dump is required; --dsn never comes from $PRODMASK_DSN")
+	}
 	sess, code := openLeakSession(ctx, env, "compare", *dsn, *timeout)
 	if sess == nil {
 		return code
@@ -372,28 +453,96 @@ turned up.
 		return ExitError
 	}
 	res.Edition = env.App.Edition
+	if code := out.write(env, res); code != ExitOK {
+		return code
+	}
+	return leakStatus(stderr, res, threshold, *failOn)
+}
 
+// leakOutput is how a compare's report is written and judged.
+type leakOutput struct {
+	format    string
+	path      string
+	noColor   bool
+	threshold model.Severity
+	failOn    string
+}
+
+// write writes the report to its file or to standard output, and returns
+// ExitOK, or the status of the failure.
+func (o leakOutput) write(env *Env, res *model.LeakResult) int {
 	render := func(w io.Writer, color bool) error {
-		if *format == "json" {
+		if o.format == "json" {
 			return report.LeakJSON(w, res)
 		}
 		return report.LeakText(w, res, color)
 	}
-	if *reportOut != "" {
-		err = writeFile(*reportOut, func(w io.Writer) error { return render(w, false) })
+	var err error
+	if o.path != "" {
+		err = writeFile(o.path, func(w io.Writer) error { return render(w, false) })
 	} else {
-		color := !*noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb" &&
+		color := !o.noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb" &&
 			isTerminal(os.Stdout) && enableANSI(os.Stdout)
-		err = render(stdout, color)
+		err = render(env.Stdout, color)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "prodmask: can't write the report")
+		fmt.Fprintln(env.Stderr, "prodmask: can't write the report")
 		return ExitError
 	}
-	if *reportOut != "" {
-		fmt.Fprintln(stderr, "Report written.")
+	if o.path != "" {
+		fmt.Fprintln(env.Stderr, "Report written.")
 	}
-	return leakStatus(stderr, res, threshold, *failOn)
+	return ExitOK
+}
+
+// runLeakCompareDump is compare with a dump file in place of staging.
+func runLeakCompareDump(ctx context.Context, env *Env, out leakOutput, path string, file *leak.File, key leak.Key, opts leak.CompareDumpOptions) int {
+	stderr := env.Stderr
+	rc, info, err := sqldump.Open(path, true)
+	if err != nil {
+		// sqldump's errors are fixed words, and never hold the path.
+		fmt.Fprintf(stderr, "prodmask leak-check compare: %v\n", err)
+		return ExitError
+	}
+	defer rc.Close()
+	opts.File, opts.Compression = "standard input", info.Compression
+	if path != "-" {
+		opts.File = filepath.Base(path)
+	}
+	opts.Size, opts.BytesRead = info.Size, info.BytesRead
+	interactive := isTerminal(os.Stderr)
+	if interactive {
+		opts.ReadProgress = func(done, total int64, table string) {
+			fmt.Fprint(stderr, dumpProgress(1, 1, done, total, table))
+		}
+	}
+	fmt.Fprintln(stderr, "Reading the dump...")
+	res, err := leak.CompareDump(ctx, rc, file, key, opts)
+	if interactive {
+		fmt.Fprint(stderr, dumpProgress(0, 1, 0, 0, ""))
+	}
+	switch {
+	case errors.Is(err, leak.ErrSecondDatabase), errors.Is(err, leak.ErrUnnamedDatabase):
+		fmt.Fprintf(stderr, "prodmask leak-check compare: %v\n", err)
+		return ExitUsage
+	case res == nil:
+		if err != nil {
+			fmt.Fprintf(stderr, "prodmask: %v\n", err)
+		}
+		return ExitError
+	}
+	res.Edition = env.App.Edition
+	if code := out.write(env, res); code != ExitOK {
+		return code
+	}
+	status := leakStatus(stderr, res, out.threshold, out.failOn)
+	if err != nil {
+		// A dump cut short or damaged: what was read is reported, and the
+		// check fails whatever --fail-on says.
+		fmt.Fprintf(stderr, "prodmask: %v\n", err)
+		return ExitError
+	}
+	return status
 }
 
 // leakStatus prints the last word on stderr, so a CI log carries it even when
@@ -409,15 +558,19 @@ func leakStatus(stderr io.Writer, res *model.LeakResult, threshold model.Severit
 			total++
 		}
 	}
+	where := "on staging"
+	if res.Dump != nil {
+		where = "in the dump"
+	}
 	note := ""
 	if unread > 0 {
 		note = fmt.Sprintf(" %d of %d columns weren't read in whole.", unread, total)
 	}
 	switch {
 	case res.NothingRead():
-		fmt.Fprintln(stderr, "prodmask: nothing was read on staging, so nothing is known about it.")
+		fmt.Fprintln(stderr, "prodmask: nothing was read "+where+", so nothing is known about it.")
 	case found > 0:
-		fmt.Fprintf(stderr, "prodmask: %s of %s sampled production values found on staging.%s\n", report.Count(found), report.Count(sampled), note)
+		fmt.Fprintf(stderr, "prodmask: %s of %s sampled production values found %s.%s\n", report.Count(found), report.Count(sampled), where, note)
 	default:
 		fmt.Fprintf(stderr, "prodmask: 0 of %s sampled production values found. That isn't proof that none are there: see the report.%s\n", report.Count(sampled), note)
 	}
@@ -434,5 +587,66 @@ func leakStatus(stderr io.Writer, res *model.LeakResult, threshold model.Severit
 	if res.NothingRead() {
 		return ExitError
 	}
+	return ExitOK
+}
+
+// runLeakHashDump is hash with a dump file of production in place of its
+// database. Every error it prints is a fixed text, and none holds the path.
+func runLeakHashDump(ctx context.Context, env *Env, path, database, outPath string, presetName string, allow *leak.Allowlist, key leak.Key) int {
+	stdout, stderr := env.Stdout, env.Stderr
+	rc, info, err := sqldump.Open(path, false)
+	if err != nil {
+		fmt.Fprintf(stderr, "prodmask: %s\n", report.Clean(err.Error()))
+		return ExitError
+	}
+	rc.Close()
+	cur := info
+	open := func() (io.ReadCloser, error) {
+		rc, in, err := sqldump.Open(path, false)
+		if err == nil {
+			cur = in
+		}
+		return rc, err
+	}
+	opts := leak.HashDumpOptions{
+		Allow: allow, Preset: presetName, Version: env.App.Version, Database: database,
+		File: filepath.Base(path), Compression: info.Compression, Size: info.Size, ModTime: info.ModTime,
+		Stat: func() (int64, time.Time, error) {
+			st, err := os.Stat(path)
+			if err != nil {
+				return 0, time.Time{}, sqldump.ErrOpen
+			}
+			return st.Size(), st.ModTime(), nil
+		},
+		BytesRead: func() int64 { return cur.BytesRead() },
+	}
+	interactive := isTerminal(os.Stderr)
+	if interactive {
+		opts.Progress = func(pass int, done, total int64, table string) {
+			fmt.Fprint(stderr, dumpProgress(pass, 3, done, total, table))
+		}
+	}
+	fmt.Fprintln(stderr, "Reading the dump...")
+	f, warnings, err := leak.HashDump(ctx, open, key, opts)
+	if interactive {
+		fmt.Fprint(stderr, dumpProgress(0, 3, 0, 0, ""))
+	}
+	for _, wn := range warnings {
+		fmt.Fprintf(stderr, "prodmask: warning: %s\n", report.Clean(wn))
+	}
+	if de := (*scan.DatabaseError)(nil); errors.As(err, &de) {
+		fmt.Fprintf(stderr, "prodmask: %s\n", report.Clean(err.Error()))
+		return ExitUsage
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "prodmask: %s\n", report.Clean(err.Error()))
+		return ExitError
+	}
+	if err := writeFile(outPath, f.Write); err != nil {
+		fmt.Fprintln(stderr, "prodmask: can't write the file given to --out")
+		return ExitError
+	}
+	writeHashSummary(stdout, f)
+	fmt.Fprintf(stderr, "Sampled up to %s rows of each flagged table in the dump.\n", report.Count(leak.DefaultSampleRows))
 	return ExitOK
 }

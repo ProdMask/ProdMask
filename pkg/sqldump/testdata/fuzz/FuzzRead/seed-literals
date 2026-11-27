@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("INSERT INTO t VALUES (1, 'a' 'b', _binary 'x', 0x41, X'4142', b'01', -1.5e3, NULL, DEFAULT, TRUE),(X'414', NOW(), 1+2")

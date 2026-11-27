@@ -18,7 +18,7 @@ func (e *env) laravel() bool {
 		return false
 	}
 	pl := model.Platform{Name: lv, Label: "Laravel"}
-	if n, err := e.count("SELECT COUNT(*) FROM `migrations`"); err == nil {
+	if n, err := e.countOnline("SELECT COUNT(*) FROM `migrations`"); err == nil {
 		pl.Details = append(pl.Details, fmt.Sprintf("%d migrations", n))
 	}
 	e.res.Platforms = append(e.res.Platforms, pl)
@@ -50,7 +50,7 @@ func (e *env) laravel() bool {
 		e.action(t, "truncate", why)
 	}
 
-	if e.has("jobs", "queue") {
+	if e.off == nil && e.has("jobs", "queue") {
 		total, err := e.count("SELECT COUNT(*) FROM `jobs`")
 		if err != nil {
 			e.warn(fmt.Sprintf("could not count queued jobs: %s", dbconn.ErrorText(err)))

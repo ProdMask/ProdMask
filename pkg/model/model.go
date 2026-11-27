@@ -502,4 +502,76 @@ type Result struct {
 	SideEffects   []SideEffect   `json:"side_effects"`
 	Relationships []Relationship `json:"relationships"`
 	Warnings      []string       `json:"warnings"`
+	// Dump is set when the scan read a dump file, not a database.
+	Dump *DumpInfo `json:"dump,omitempty"`
+}
+
+// DumpInfo describes the dump file a scan read. It holds counts, kinds and
+// reasons from closed lists, line numbers and names the reader parsed as
+// names; nothing else comes from the file.
+type DumpInfo struct {
+	File        string         `json:"file"` // the file's base name
+	Compression string         `json:"compression"`
+	Bytes       int64          `json:"bytes"` // bytes of SQL read
+	Producer    string         `json:"producer,omitempty"`
+	Statements  int            `json:"statements"`
+	ByKind      map[string]int `json:"statements_by_kind"`
+	Rows        int64          `json:"rows"`
+	// Defaults counts the values of rows the server fills that were read as
+	// NULL: a DEFAULT keyword for a column with no literal default, and a
+	// column left out or given DEFAULT whose default is an expression, or
+	// which is generated.
+	Defaults int64 `json:"defaults_without_literal"`
+	Unread   int   `json:"unread"` // every unread statement; UnreadList holds the first 100
+	// UnreadList is the first 100 unread statements.
+	UnreadList []DumpUnread `json:"unread_list,omitempty"`
+	// Databases lists the databases with a parsed table, when there are
+	// several.
+	Databases []string `json:"databases,omitempty"`
+	// Judged says which rows were judged, as the report's closing line does;
+	// SampleRows is its limit in numbers.
+	Judged     string `json:"judged"`
+	SampleRows int    `json:"sample_rows"`
+	// NotChecked names what a scan of a dump doesn't check, from a fixed
+	// list: side_effects, the live settings and queues a server holds.
+	NotChecked []string `json:"not_checked,omitempty"`
+	// Bodies counts the stored programs and views the file creates, whose
+	// bodies aren't judged.
+	Bodies DumpBodies `json:"bodies_not_judged"`
+	// Users counts the statements that can set a password, whose clauses
+	// aren't judged: CREATE and ALTER USER, GRANT ... IDENTIFIED BY and SET
+	// PASSWORD.
+	Users int `json:"user_statements"`
+}
+
+// DumpBodies counts the bodies of a dump file that aren't judged, each view
+// once.
+type DumpBodies struct {
+	Triggers int `json:"triggers"`
+	Routines int `json:"routines"` // procedures and functions
+	Events   int `json:"events"`
+	Views    int `json:"views"`
+}
+
+// DumpBodiesOf counts the bodies from a read's statements by kind and its
+// views.
+func DumpBodiesOf(byKind map[string]int, views int) DumpBodies {
+	return DumpBodies{
+		Triggers: byKind["CREATE TRIGGER"],
+		Routines: byKind["CREATE PROCEDURE"] + byKind["CREATE FUNCTION"],
+		Events:   byKind["CREATE EVENT"],
+		Views:    views,
+	}
+}
+
+// DumpUnread is one statement of a dump file that was not read. Database and
+// Table are set only when the table has a parsed structure or fully read rows.
+type DumpUnread struct {
+	Line     int    `json:"line"`
+	Kind     string `json:"kind"`
+	Reason   string `json:"reason"`
+	Database string `json:"database,omitempty"`
+	Table    string `json:"table,omitempty"`
+	// ToEnd marks the entry that stands for the rest of the file, from Line.
+	ToEnd bool `json:"to_end,omitempty"`
 }

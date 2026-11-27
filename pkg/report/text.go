@@ -251,13 +251,26 @@ func (r *textReport) header() {
 	if res.Edition != "" {
 		title = toolName(res.Edition, res.Version) + " scan"
 	}
-	r.out(r.st.fill(r.w, 0, 2, part{title, "1"}, plain(" "), part{"· " + res.Database + " · " + serverLine(res), "2"})...)
+	source := "· " + res.Database + " · " + serverLine(res)
+	if res.Dump != nil {
+		source = "· " + res.Database + " · " + dumpSource(res)
+		if res.Database == "" {
+			source = "· " + dumpSource(res) // a dump that names no database
+		}
+	}
+	r.out(r.st.fill(r.w, 0, 2, part{title, "1"}, plain(" "), part{source, "2"})...)
 	if len(res.Platforms) > 0 {
 		var ps []string
 		for _, p := range res.Platforms {
 			ps = append(ps, platformLine(p))
 		}
 		r.out(r.st.fill(r.w, 0, 2, plain("Platforms: "+strings.Join(ps, " · ")))...)
+	}
+	if res.Dump != nil {
+		// A dump's header ends with what was read, in place of the scanned line.
+		r.out(r.st.fill(r.w, 0, 2, plain(dumpRead(res)))...)
+		r.blank()
+		return
 	}
 	s := res.Summary
 	scanned := fmt.Sprintf("Scanned %d tables", s.Tables-s.Views)
@@ -415,8 +428,9 @@ func (r *textReport) sideEffectLabelWidth() int {
 }
 
 // fixes prints how to stop each side effect: its label, the fix, and where.
+// A dump's report has none: its side effects weren't checked.
 func (r *textReport) fixes() {
-	if len(r.res.SideEffects) == 0 {
+	if len(r.res.SideEffects) == 0 || r.res.Dump != nil {
 		return
 	}
 	r.heading("How to stop each one", fmt.Sprint(len(r.res.SideEffects)))
@@ -432,12 +446,19 @@ func (r *textReport) fixes() {
 	r.blank()
 }
 
+// warnings prints the warnings; a dump's add its unread statements, the
+// first 100 and a count of the rest, and its total counts every one.
 func (r *textReport) warnings() {
-	if len(r.res.Warnings) == 0 {
+	warnings, total := r.res.Warnings, len(r.res.Warnings)
+	if r.res.Dump != nil {
+		warnings = append(warnings[:len(warnings):len(warnings)], dumpUnread(r.res)...)
+		total += r.res.Dump.Unread
+	}
+	if len(warnings) == 0 {
 		return
 	}
-	r.heading("Warnings", fmt.Sprint(len(r.res.Warnings)))
-	for _, wn := range r.res.Warnings {
+	r.heading("Warnings", fmt.Sprint(total))
+	for _, wn := range warnings {
 		r.beside("  ! ", 4, 4, plain(wn))
 	}
 	r.blank()
@@ -452,7 +473,11 @@ func (r *textReport) summary() {
 	}
 	r.heading(Headline, countOf(total, "finding", "findings"))
 	if len(groups) == 0 {
-		r.beside("  ", 2, 4, plain("Nothing found. Check the warnings above: a scan user that cannot read the tables finds nothing too."))
+		nothing := "Nothing found. Check the warnings above: a scan user that cannot read the tables finds nothing too."
+		if r.res.Dump != nil {
+			nothing = "Nothing found. Check the warnings above: statements that weren't read can hide findings."
+		}
+		r.beside("  ", 2, 4, plain(nothing))
 	}
 	// The counts' column is 4 digits wide, or as wide as the largest count,
 	// so the kinds of data line up and every row stays within the width.
@@ -492,8 +517,15 @@ func fitKinds(kinds []string, room int) string {
 }
 
 // sideEffects prints what staging could do: each side effect's severity,
-// label and lead.
+// label and lead. A dump's section has no total, and says the checks didn't
+// run.
 func (r *textReport) sideEffects() {
+	if r.res.Dump != nil {
+		r.out(r.st.fill(r.w, 0, 2, part{"What staging could do to real people", "1"})...)
+		r.beside("  ", 2, 4, plain(dumpSideEffects))
+		r.blank()
+		return
+	}
 	if len(r.res.SideEffects) == 0 {
 		return
 	}
@@ -506,7 +538,19 @@ func (r *textReport) sideEffects() {
 	r.blank()
 }
 
+// closing prints the lines that end the report. A dump's are its own: what
+// wasn't judged, which rows were, what a finding is, and its Pro line; no
+// starter config is written from a dump.
 func (r *textReport) closing() {
+	if r.res.Dump != nil {
+		for _, l := range dumpClosing(r.res) {
+			r.out(r.st.fill(r.w, 0, 2, part{l, "2"})...)
+		}
+		if p := dumpPro(r.res); p != "" {
+			r.out(r.st.fill(r.w, 0, 2, part{p, "2"})...)
+		}
+		return
+	}
 	if r.opts.ConfigWritten {
 		r.out(r.st.fill(r.w, 0, 2, plain("Starter masking config written to the file given to --config-out. Review it before use."))...)
 	} else {

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("it's \"q\" \\ \x0a\x0d\x00\x1a")
