@@ -335,14 +335,14 @@ jobs:
         run: docker compose up -d --wait
       - name: Scan it with the action pinned to its tag
         id: tag
-        uses: ProdMask/ProdMask@v0.15.0
+        uses: ProdMask/ProdMask@v0.17.0
         with:
           dsn: mysql://prodmask_ro@127.0.0.1:3399/shop
           password: demo
           fail-on: none
       - name: Scan it with the action pinned to the tag's commit
         id: sha
-        uses: ProdMask/ProdMask@cfa388aec7e4890c41e5e7ce3b50e1e7c2991a41 # v0.15.0
+        uses: ProdMask/ProdMask@745cac36198931b96ce5f7595d6e61df99f6ec8a # v0.17.0
         with:
           dsn: mysql://prodmask_ro@127.0.0.1:3399/shop
           password: demo

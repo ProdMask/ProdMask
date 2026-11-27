@@ -199,7 +199,7 @@ jobs:
           mysql -h 127.0.0.1 -uroot -pci-only-root shop_copy < shop_copy.sql
           mysql -h 127.0.0.1 -uroot -pci-only-root -e "CREATE USER 'agent'@'%' IDENTIFIED BY 'agent-local-only'; GRANT SELECT, SHOW VIEW ON shop_copy.* TO 'agent'@'%';"
       - name: Install prodmask
-        run: go install github.com/ProdMask/ProdMask/cmd/prodmask@v0.15.0
+        run: go install github.com/ProdMask/ProdMask/cmd/prodmask@v0.17.0
 ```
 
 Then, in the repository's Settings, under Copilot and MCP servers:
@@ -227,7 +227,7 @@ Boost's own database tools connect with the login in your app's `.env`, which ca
 ### Docker
 
 ```bash
-docker run -i --rm -e PRODMASK_DSN='mysql://agent:…@db.internal:3306/shop_copy' ghcr.io/prodmask/prodmask:0.15.0 mcp --copy
+docker run -i --rm -e PRODMASK_DSN='mysql://agent:…@db.internal:3306/shop_copy' ghcr.io/prodmask/prodmask:0.17.0 mcp --copy
 ```
 
 Keep `-i`, since the client talks to the server over standard input. Inside the container, `localhost` is the container itself, not your machine. To reach a server on your machine, use `host.docker.internal` (Docker Desktop) or `--network host` (Linux).
